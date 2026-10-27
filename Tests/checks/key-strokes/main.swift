@@ -168,7 +168,7 @@ struct Mac {
             for s in keys.text(from: d) { post(s) }
             for _ in string { log.append(.text); table = 0; real = 0 }   // a character's down, with no flags
             judge("after text")
-        case .pointer, .scroll, .scrollGesture:
+        case .pointer, .button, .relativePointer, .relativeScroll, .scroll, .scrollGesture:
             log.append(.pointer(table))
             let stray = table & (modifierBits | fn) & ~accounted
             if stray != 0 { broken.append("a pointer event carries \(names(stray)), which no key down accounts for") }
@@ -743,12 +743,17 @@ struct Glue {
         case .pointer(.leftUp, _, _): left = false; log.append("left up" + at)
         case .pointer(.rightDown, _, _): right = true; log.append("right down")
         case .pointer(.rightUp, _, _): right = false; log.append("right up" + at)
+        case .button(.leftDown): left = true; log.append("left down")
+        case .button(.leftUp): left = false; log.append("left up" + at)
+        case .button(.rightDown): right = true; log.append("right down")
+        case .button(.rightUp): right = false; log.append("right up" + at)
+        case .button(.move), .relativePointer: log.append(left ? "left drag" : right ? "right drag" : "move")
         case .key(let u, let d, let m):
             for s in keys.key(usage: u, down: d, modifiers: m, from: ObjectIdentifier(c)) ?? [] {
                 log.append("key \(s.virtualKey) \(s.down ? "down" : "up") (\(names(s.flags)))")
             }
         case .text: log.append("text")
-        case .scroll, .scrollGesture: log.append("scroll")
+        case .relativeScroll, .scroll, .scrollGesture: log.append("scroll")
         }
     }
     mutating func send(_ events: [InputEvent], placed: Bool, from c: Conn) { for e in events { input(e, placed: placed, from: c) } }
@@ -1036,7 +1041,7 @@ struct OldMac {
             log.append(.key(k, isDown, f)); table = f
             if isDown { down[k] = f } else { down[k] = nil }
         case .text: log.append(.text); table = 0
-        case .pointer, .scroll, .scrollGesture: log.append(.pointer(table))
+        case .pointer, .button, .relativePointer, .relativeScroll, .scroll, .scrollGesture: log.append(.pointer(table))
         }
     }
     mutating func send(_ events: [InputEvent]) { for e in events { input(e) } }

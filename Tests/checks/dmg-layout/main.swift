@@ -159,7 +159,7 @@ func aliasBytes(volume: String, volumeDate: Int64, parentID: UInt32, file: Strin
 func releaseTags() -> [(Int16, [UInt8])] {
     [(0, Array(".background".utf8)), (16, long(UInt64(volumeSeconds) << 16)), (17, long(UInt64(fileSeconds) << 16)),
      (1, words([30])), (2, Array("HitPad:.background:\u{0}background.tiff".utf8)),
-     (14, [0, 15] + utf16BE("background.tiff")), (15, [0, 4] + utf16BE("HitPad")),
+     (14, [0, 15] + utf16BE("background.tiff")), (15, [0, 6] + utf16BE("HitPad")),
      (18, Array("/.background/background.tiff".utf8)), (19, Array("/Volumes/HitPad".utf8))]
 }
 let wantUTC = aliasBytes(volume: "HitPad", volumeDate: volumeSeconds, parentID: 30, file: "background.tiff", fileID: 31,

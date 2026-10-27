@@ -10,7 +10,7 @@ func check(_ ok: Bool, _ what: @autoclosure () -> String, line: Int = #line) {
 typealias P = UpdatePolicy
 let v03 = SillVersion("0.3.0")!, v04 = SillVersion("0.4")!
 let now = Date(timeIntervalSince1970: 1_790_265_600)
-let page = "https://github.com/Saffsanity/sill/releases/tag/v0.4.0"
+let page = "https://github.com/donghaxkim/sill/releases/tag/v0.4.0"
 func body(_ tag: Any? = "v0.4.0", html: Any? = page, draft: Any? = false, prerelease: Any? = false) -> Data {
     var d: [String: Any] = ["name": "x", "assets": []]
     if let tag { d["tag_name"] = tag }
@@ -33,7 +33,7 @@ var (o, s) = interpret(ok(body()))
 check(o == .newer(offer04), "200 newer: \(o)")
 check(s == P.Stored(lastCheck: now, etag: "W/\"e1\"", latestTag: "v0.4.0", latestURL: page), "200 newer stores all four: \(s)")
 // 200, published, not newer (same, older, and the running version written with its build).
-(o, s) = interpret(ok(body("v0.3.0", html: "https://github.com/Saffsanity/sill/releases/tag/v0.3.0")))
+(o, s) = interpret(ok(body("v0.3.0", html: "https://github.com/donghaxkim/sill/releases/tag/v0.3.0")))
 check(o == .upToDate(tag: "v0.3.0") && s.latestTag == "v0.3.0" && s.lastCheck == now, "200 same: \(o)")
 check(interpret(ok(body("0.2.9")), running: v03).0 == .upToDate(tag: "0.2.9"), "an older release")
 check(interpret(ok(body("v0.3.0")), running: SillVersion("0.3.0 (85)")!).0 == .upToDate(tag: "v0.3.0"), "0.3.0 (85) against v0.3.0")
@@ -124,7 +124,7 @@ check(inRange, "the next check is 24 h to 24 h 30 min after the last")
 
 // Feeds and pages.
 for (u, want) in [("http://127.0.0.1:8080/latest", true), ("https://127.0.0.1/x", true), ("http://[::1]:9/latest", true), ("http://localhost:1/", true),
-                  ("http://LOCALHOST:1/", true), ("http://127.0.0.2/", false), ("https://api.github.com/repos/Saffsanity/sill/releases/latest", false),
+                  ("http://LOCALHOST:1/", true), ("http://127.0.0.2/", false), ("https://api.github.com/repos/donghaxkim/sill/releases/latest", false),
                   ("ftp://127.0.0.1/x", false), ("http://localhost.evil.example/", false), ("http://127.0.0.1.nip.io/", false),
                   ("file:///tmp/feed.json", false), ("http://192.168.1.2/", false)] {
     check(P.isLocalFeed(URL(string: u)!) == want, "isLocalFeed(\(u)) == \(want)")
@@ -132,16 +132,16 @@ for (u, want) in [("http://127.0.0.1:8080/latest", true), ("https://127.0.0.1/x"
 check(P.redirectAllowed(URL(string: "https://api.github.com/repositories/1/releases/latest")!), "a redirect within api.github.com")
 check(!P.redirectAllowed(URL(string: "http://api.github.com/x")!) && !P.redirectAllowed(URL(string: "https://api.github.com.evil.example/x")!)
       && !P.redirectAllowed(URL(string: "https://github.com/x")!) && !P.redirectAllowed(URL(string: "http://127.0.0.1/x")!), "redirects elsewhere refused")
-check(P.feed.absoluteString == "https://api.github.com/repos/Saffsanity/sill/releases/latest", "the feed")
+check(P.feed.absoluteString == "https://api.github.com/repos/donghaxkim/sill/releases/latest", "the feed")
 
 // Words.
 let t: (Date) -> String = { _ in "15:42" }
-check(P.menuTitle(offer04) == "Sill 0.4 Is Available…" && P.menuSubtitle(running: v03) == "You have 0.3; opens its download page", "the menu item")
+check(P.menuTitle(offer04) == "HitPad 0.4 Is Available…" && P.menuSubtitle(running: v03) == "You have 0.3; opens its download page", "the menu item")
 func log(_ o: P.Outcome, manual: Bool = false, retry: TimeInterval = 3600) -> String? { P.logLine(o, manual: manual, running: "0.3.0", retryIn: retry, time: t) }
-check(log(.newer(offer04)) == "Update check: Sill 0.4 is available (this is 0.3.0): \(page)" && log(.newer(offer04), manual: true) == log(.newer(offer04)), "log: newer")
+check(log(.newer(offer04)) == "Update check: HitPad 0.4 is available (this is 0.3.0): \(page)" && log(.newer(offer04), manual: true) == log(.newer(offer04)), "log: newer")
 check(log(.upToDate(tag: "v0.3.0")) == nil, "log: nothing new, automatic: nothing")
 check(log(.upToDate(tag: "v0.3.0"), manual: true) == "Update check: up to date (this is 0.3.0; the latest release is v0.3.0).", "log: up to date, Check Now")
-check(log(.noRelease) == "Update check failed: GitHub has no release of Sill (HTTP 404)." && log(.noRelease, manual: true) == log(.noRelease), "log: 404")
+check(log(.noRelease) == "Update check failed: GitHub has no release of HitPad (HTTP 404)." && log(.noRelease, manual: true) == log(.noRelease), "log: 404")
 check(log(.limited(status: 403, reset: reset)) == "Update check failed: GitHub is limiting requests from this network (HTTP 403; it resets at 15:42).", "log: 403")
 check(log(.limited(status: 429, reset: nil)) == "Update check failed: GitHub is limiting requests from this network (HTTP 429).", "log: 429 without a reset")
 check(log(.httpError(502)) == "Update check failed: HTTP 502.", "log: 502")
@@ -153,12 +153,12 @@ check(log(.failed(code: -1100, description: "odd")) == "Update check failed: odd
 check(log(.timeout, retry: 4.0 / 24 < 1 ? 1 : 4.0 / 24) == "Update check failed: no answer in 10 s; trying again in 1 s.", "log: a scaled retry")
 check(P.duration(3600) == "1 hour" && P.duration(7200) == "2 hours" && P.duration(1800) == "30 minutes" && P.duration(4) == "4 s", "durations")
 func line(_ o: P.Outcome) -> (String, Bool) { let r = P.resultLine(o, time: t); return (r.text, r.failed) }
-check(line(.newer(offer04)) == ("Sill 0.4 is available.", false) && line(.upToDate(tag: "v0.3.0")) == ("Sill is up to date.", false), "pane: found, up to date")
-check(line(.noRelease) == ("Couldn’t check: GitHub has no release of Sill yet.", true), "pane: 404")
+check(line(.newer(offer04)) == ("HitPad 0.4 is available.", false) && line(.upToDate(tag: "v0.3.0")) == ("HitPad is up to date.", false), "pane: found, up to date")
+check(line(.noRelease) == ("Couldn’t check: GitHub has no release of HitPad yet.", true), "pane: 404")
 check(line(.limited(status: 403, reset: reset)) == ("Couldn’t check: GitHub is limiting requests from this network. Try again after 15:42.", true), "pane: 403")
 check(line(.limited(status: 403, reset: nil)) == ("Couldn’t check: GitHub is limiting requests from this network. Try again in an hour.", true), "pane: 403 without a reset")
 check(line(.httpError(502)) == ("Couldn’t check: GitHub answered with an error (HTTP 502).", true), "pane: 502")
-check(line(.notARelease("x")) == ("Couldn’t check: GitHub’s answer wasn’t a release Sill understands.", true), "pane: not a release")
+check(line(.notARelease("x")) == ("Couldn’t check: GitHub’s answer wasn’t a release HitPad understands.", true), "pane: not a release")
 check(line(.noConnection(code: -1009, description: "x")) == ("Couldn’t check: this Mac isn’t connected to the internet.", true), "pane: offline")
 check(line(.noConnection(code: -1202, description: "The certificate for this server is invalid.")) == ("Couldn’t check: The certificate for this server is invalid.", true), "pane: TLS")
 check(line(.timeout) == ("Couldn’t check: GitHub didn’t answer within 10 seconds.", true), "pane: timeout")
@@ -170,10 +170,10 @@ func pane(checking: Bool = false, result: P.Outcome? = nil, offer: P.Offer? = ni
 check(pane() == P.Pane(line: "Not checked yet.", failed: false, releasePage: nil, canCheck: true, resultID: 3), "pane: never")
 check(pane(lastCheck: last).line == "Last checked Sep 24, 2026 at 13:00.", "pane: last checked")
 check(pane(checking: true, result: .noRelease, lastCheck: last) == P.Pane(line: "Checking…", releasePage: nil, canCheck: false, resultID: 3), "pane: checking, Check Now off")
-check(pane(result: .noRelease, offer: offer04).line == "Couldn’t check: GitHub has no release of Sill yet." && pane(result: .noRelease).failed, "pane: a result wins")
-check(pane(offer: offer04, lastCheck: last) == P.Pane(line: "Sill 0.4 is available.", releasePage: URL(string: page)!, canCheck: true, resultID: 3), "pane: offered, Open Release Page…")
-check(pane(hasVersion: false) == P.Pane(line: "This build of Sill has no version number, so it can’t check.", canCheck: false, resultID: 3), "pane: no version")
-check(pane(lastCheck: last, testPattern: true) == P.Pane(line: "Sill doesn’t check for updates in test pattern mode.", canCheck: false, resultID: 3), "pane: test pattern")
-check(P.footnote.contains("GitHub sees this Mac’s IP address and which version of Sill it has; nothing else is sent."), "the footnote says what is sent")
+check(pane(result: .noRelease, offer: offer04).line == "Couldn’t check: GitHub has no release of HitPad yet." && pane(result: .noRelease).failed, "pane: a result wins")
+check(pane(offer: offer04, lastCheck: last) == P.Pane(line: "HitPad 0.4 is available.", releasePage: URL(string: page)!, canCheck: true, resultID: 3), "pane: offered, Open Release Page…")
+check(pane(hasVersion: false) == P.Pane(line: "This build of HitPad has no version number, so it can’t check.", canCheck: false, resultID: 3), "pane: no version")
+check(pane(lastCheck: last, testPattern: true) == P.Pane(line: "HitPad doesn’t check for updates in test pattern mode.", canCheck: false, resultID: 3), "pane: test pattern")
+check(P.footnote.contains("GitHub sees this Mac’s IP address and which version of HitPad it has; nothing else is sent."), "the footnote says what is sent")
 print("\(checks) checks, \(failures) failed")
 exit(failures == 0 ? 0 : 1)
