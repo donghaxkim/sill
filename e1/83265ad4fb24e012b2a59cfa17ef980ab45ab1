@@ -1,0 +1,58 @@
+iOSClient/ContentView.swift
+  s_1fa5bf0c25d94f::t_6e2195d42785c7 37-41,81-84,86-93,96-108,110-130,132-235,237-242,245-259,264-267,272-283,292-342
+  s_1fa5bf0c25d94f::t_dce45aec6c9a3e 85,94-95,109,131,236,243-244,260-263,268-271,284-291
+  s_1fa5bf0c25d94f::t_8446b183e6003b 343
+Sources/SillHost/InputInjector.swift
+  s_1fa5bf0c25d94f::t_3747482c444bb7 93-105
+Sources/StreamProtocol/Compatibility.swift
+  s_1fa5bf0c25d94f::t_a3e0b88bddf411 118-120,123,125
+Sources/SillHost/PointerControl.swift
+  s_1fa5bf0c25d94f::t_275844a488df35 121-122
+Sources/SillHost/StreamCoordinator.swift
+  s_1fa5bf0c25d94f::t_7a7aa2bbf00fca 1002-1010,1020,1023,1025
+  s_1fa5bf0c25d94f::t_73ba35d7ba68f3 258-259,431-445,465
+  s_1fa5bf0c25d94f::t_e1b52b82d28646 1714-1715,2538-2541
+  s_1fa5bf0c25d94f::t_42126885f66256 2615-2616
+  s_1fa5bf0c25d94f::t_b956770233496c 674,2610-2614,2617
+  s_1fa5bf0c25d94f::t_71093a7ee1e3ff 1929
+  s_1fa5bf0c25d94f::t_9b7bc69da4bb08 2618-2619
+Sources/StreamProtocol/Input.swift
+  s_1fa5bf0c25d94f::t_d07b39739a052b 17-25
+Sources/SillHost/StreamServer.swift
+  s_1fa5bf0c25d94f::t_4ce2e50a968c50 127-130,168-169,996-1006,1011-1013,1254,1257-1265,1351
+  s_1fa5bf0c25d94f::t_1bda92580a5ceb 1270,1621
+  s_1fa5bf0c25d94f::t_b51247b6f32d7b 1393,1421-1422,1424-1432,1544
+  s_1fa5bf0c25d94f::t_2c590b4b603f4c 166,1408,1413-1419
+  s_1fa5bf0c25d94f::t_dc11d5dfae3601 1389,1391,1394
+  s_1fa5bf0c25d94f::t_0fb9261e80487a 1420
+  s_1fa5bf0c25d94f::t_45d7e25c713522 1423
+iOSClient/InputOverlay.swift
+  s_1fa5bf0c25d94f::t_1d5cf600fc0615 1181-1204,1206-1209,1212-1215,1218-1227,1229-1234,1237-1242,1245-1268,1270-1276,1279-1282,1284-1318,1320-1325,1329-1332,1334-1340,1343-1346,1348,1350-1353,1355-1376,1378-1385,1388-1394,1396-1399,1404-1406,1408-1412,1422-1430,1433-1446,1448-1503
+  s_1fa5bf0c25d94f::t_a1e423a866e227 1243,1277,1395,1415,1431
+  s_1fa5bf0c25d94f::t_4069c43673d60a 1400-1403
+  s_1fa5bf0c25d94f::t_8877bd19f63b3b 1205,1210-1211,1216-1217,1235-1236,1269,1283,1319,1349,1377
+  s_1fa5bf0c25d94f::t_4cf412c6be9260 1386-1387,1407,1413-1414,1416,1418-1420
+  s_1fa5bf0c25d94f::t_aada2b0342bfd8 1228,1244,1278,1326-1328,1333,1341-1342,1347,1354,1417,1421,1432,1447
+Sources/SillHost/KeyStrokes.swift
+  s_1fa5bf0c25d94f::t_f31c682bf9a4ef 310-311
+iOSClient/StreamClient.swift
+  s_1fa5bf0c25d94f::t_d8fef002266abf 135-136,3332,3623
+  s_1fa5bf0c25d94f::t_c4ecf59f23522d 1882
+  s_1fa5bf0c25d94f::t_86f31a493122df 3791,3806,3822,3833-3834,3841
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e183265ad4fb24e012b2a59cfa17ef980ab45ab1",
+  "prompts": {},
+  "sessions": {
+    "s_1fa5bf0c25d94f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bac-3a70-7021-9ba5-b44269046750",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
