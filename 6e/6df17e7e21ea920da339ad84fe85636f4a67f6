@@ -1,0 +1,38 @@
+Sources/SillMenuBar/SettingsWindow.swift
+  s_1fa5bf0c25d94f::t_0892120a5d47bb 7,12,24
+Packaging/Info.plist
+  s_1fa5bf0c25d94f::t_29b87dc24429e9 39-40
+Sources/SillMenuBar/SidecarTablet.swift
+  s_1fa5bf0c25d94f::t_20992ea2573332 1-108,110-181,185-224,227-239,242-251,254-267,269-318,320-324,326-342,348-358,360-368,370-372,374-412,414,416-420,422,424-444,446-449,451-461,463-467,469-471,481,483-519
+  s_1fa5bf0c25d94f::t_613e2eb78a8ab3 109,240-241,252-253,369,373
+  s_1fa5bf0c25d94f::t_cc7087e49216e5 325
+  s_1fa5bf0c25d94f::t_9a796f08624f26 359,413,415,423,445,450,462,468,472-480,482
+  s_1fa5bf0c25d94f::t_860f37d9edf1d9 182-184,225-226,268,319,343-347
+  s_1fa5bf0c25d94f::t_e0cc0f137e8bba 421
+Sources/SillMenuBar/SettingsPanes.swift
+  s_1fa5bf0c25d94f::t_1f58cd2cc6023c 23
+Sources/SillMenuBar/StatusItemController.swift
+  s_1fa5bf0c25d94f::t_29b87dc24429e9 147-148
+Sources/SillMenuBar/SidecarTabletPane.swift
+  s_1fa5bf0c25d94f::t_4c67590d1c1532 17,74,78-80
+  s_1fa5bf0c25d94f::t_cc7087e49216e5 42
+  s_1fa5bf0c25d94f::t_3749d4a2b01ca9 1-16,18-41,43-73,75-77,81-127
+Sources/SillMenuBar/AppModel.swift
+  s_1fa5bf0c25d94f::t_2ffb462ccbf578 14,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e6df17e7e21ea920da339ad84fe85636f4a67f6",
+  "prompts": {},
+  "sessions": {
+    "s_1fa5bf0c25d94f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bac-3a70-7021-9ba5-b44269046750",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
