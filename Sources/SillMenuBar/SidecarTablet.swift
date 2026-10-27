@@ -74,6 +74,25 @@ private final class SidecarBridge {
         }
     }
 
+    func extendDisplay(_ id: CGDirectDisplayID) throws {
+        guard CGDisplayIsInMirrorSet(id) != 0 else { return }
+        guard CGDisplayIsAlwaysInMirrorSet(id) == 0 else {
+            throw SidecarError("macOS is keeping the iPad in mirror mode.")
+        }
+        var configuration: CGDisplayConfigRef?
+        guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else {
+            throw SidecarError("macOS couldn’t prepare the iPad display for tablet input.")
+        }
+        let configureResult = CGConfigureDisplayMirrorOfDisplay(configuration, id, kCGNullDirectDisplay)
+        guard configureResult == .success else {
+            CGCancelDisplayConfiguration(configuration)
+            throw SidecarError("macOS couldn’t switch the iPad to Extended Display.")
+        }
+        guard CGCompleteDisplayConfiguration(configuration, .forSession) == .success else {
+            throw SidecarError("macOS couldn’t apply the Extended Display setting.")
+        }
+    }
+
     private func sidecarDevices() throws -> [NSObject] {
         guard dlopen(frameworkPath, RTLD_LAZY) != nil else {
             throw SidecarError("Sidecar isn’t available on this Mac.")
@@ -275,9 +294,15 @@ final class SidecarTabletModel {
         defer { isConnecting = false }
         do {
             try await bridge.connect(name: name)
-            guard let id = await waitForSidecarDisplay(), let screen = screen(for: id) else {
+            guard let id = await waitForSidecarDisplayID() else {
                 try? await bridge.disconnect(name: name)
-                problem = "Sidecar connected, but its display isn’t available as a separate screen. Set the iPad to extend the Mac display."
+                problem = "Sidecar connected, but the iPad display didn’t become available."
+                return
+            }
+            try bridge.extendDisplay(id)
+            guard let screen = await waitForScreen(id: id) else {
+                try? await bridge.disconnect(name: name)
+                problem = "The iPad display didn’t become available in Extended Display mode."
                 return
             }
             surfaceWindow?.close()
@@ -290,9 +315,17 @@ final class SidecarTabletModel {
         }
     }
 
-    private func waitForSidecarDisplay() async -> CGDirectDisplayID? {
+    private func waitForSidecarDisplayID() async -> CGDirectDisplayID? {
         for _ in 0..<50 {
-            if let id = bridge.displayID(), screen(for: id) != nil { return id }
+            if let id = bridge.displayID() { return id }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return nil
+    }
+
+    private func waitForScreen(id: CGDirectDisplayID) async -> NSScreen? {
+        for _ in 0..<50 {
+            if let screen = screen(for: id) { return screen }
             try? await Task.sleep(for: .milliseconds(200))
         }
         return nil
