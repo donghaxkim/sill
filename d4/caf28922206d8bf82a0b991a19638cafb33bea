@@ -1,0 +1,25 @@
+Tests/checks/audio-playout/main.swift
+  s_397ee9e1a9668d::t_96f35fe2c65b44 637-641
+Tests/checks/dmg-layout/main.swift
+  s_397ee9e1a9668d::t_d50443efa5b99e 162
+Tests/checks/key-strokes/main.swift
+  s_397ee9e1a9668d::t_03bce923966b70 171,746-750,756,1044
+Tests/checks/update-policy/main.swift
+  s_397ee9e1a9668d::t_9ced417bed83ef 13,36,127,135,139,141,144,156-157,161,173-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d4caf28922206d8bf82a0b991a19638cafb33bea",
+  "prompts": {},
+  "sessions": {
+    "s_397ee9e1a9668d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d89-8de4-7320-8ccc-6368be880baf",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
