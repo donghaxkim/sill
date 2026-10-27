@@ -4,22 +4,15 @@ import SwiftUI
 import SillHostCore
 import StreamProtocol
 
-/// One Settings tab: a grouped Form, 520 pt wide. The controls bind straight to
-/// `settings.config`, whose didSet is the one path to the host (see HostSettings).
+/// One user-facing settings tab, with native controls bound to the app models.
 struct SettingsPane: View {
     let tab: SettingsTab
     let model: AppModel
-    /// The previews (DebugHooks): General's update section in this state instead of the live one,
-    /// so a render does not depend on what an earlier run stored.
-    var previewUpdates: UpdatePolicy.Pane?
-    /// …and its clipboard section with macOS's answer as given, never read from this Mac.
-    var previewClipboardAccess: ClipboardPolicy.MacAccess?
 
     var body: some View {
         Group {
             switch tab {
-            case .general: GeneralPane(model: model, settings: model.settings, previewUpdates: previewUpdates,
-                                       previewClipboardAccess: previewClipboardAccess)
+            case .general: GeneralPane(model: model)
             case .tablet: SidecarTabletPane(tablet: model.tablet, permissions: model.permissions)
             case .devices: LiveDevicesPane(model: model, settings: model.settings)
             case .streaming: StreamingPane(model: model, settings: model.settings)
@@ -29,7 +22,7 @@ struct SettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
+        .frame(width: tab == .tablet ? 700 : 520)
         // Permissions and the login item change behind Sill's back, in System Settings. Re-read
         // them once a second, only while this tab is on screen, and when Sill becomes active; an
         // idle Sill with Settings closed wakes for nothing. The Devices and Remote Access panes
@@ -82,11 +75,6 @@ func withoutFullStop(_ text: String) -> String {
 
 private struct GeneralPane: View {
     let model: AppModel
-    @Bindable var settings: HostSettings
-    var previewUpdates: UpdatePolicy.Pane?
-    var previewClipboardAccess: ClipboardPolicy.MacAccess?
-
-    private static let runsFromApplications = Bundle.main.bundlePath.hasPrefix("/Applications/")
 
     var body: some View {
         Form {
@@ -94,7 +82,7 @@ private struct GeneralPane: View {
                 Toggle("Launch at login", isOn: Binding(get: { model.loginItem.isOn }, set: { model.loginItem.set($0) }))
                     .disabled(!model.loginItem.available)
                 if !model.loginItem.available {
-                    Footnote("Available when Sill runs from its app bundle.")
+                    Footnote("Launch at login is available when this app runs from its app bundle.")
                 } else if model.loginItem.needsApproval {
                     LabeledContent("Waiting for your approval") {
                         Button("Approve in System Settings…") { model.loginItem.openSystemSettings() }
@@ -103,84 +91,17 @@ private struct GeneralPane: View {
                 if let error = model.loginItem.error {
                     Text(error).font(.callout).foregroundStyle(.red)
                 }
-            }
-            Section {
-                LabeledContent("Running from") {
-                    Text(Bundle.main.bundlePath)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
-                }
-                if !Self.runsFromApplications {
-                    Label("The login item and the permissions follow this copy of Sill. Keep one copy, in Applications.",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                }
-            }
-            Section {
-                LabeledContent("Visible on your network as") { Text(networkName) }
+            } header: {
+                Text("Startup")
             } footer: {
-                HStack(spacing: 4) {
-                    Text("This is the Mac’s name.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button("Change It in Sharing Settings…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Sharing-Settings.extension") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
-                    .buttonStyle(.link)
-                    .font(.footnote)
-                    Spacer(minLength: 0)
-                }
+                Footnote("Open the tablet configurator when you sign in to your Mac.")
             }
-            // How devices reach this Mac, so beside its name on the network. Applies at once without
-            // restarting the stream (the listener is replaced); enabled in test pattern mode too,
-            // where it is saved and changes only the listener.
             Section {
-                Toggle("Direct wireless connection", isOn: $settings.config.directWireless)
+                LabeledContent("App") { Text("iPad as Tablet") }
+                LabeledContent("Version") { Text("\(AppModel.version) (\(AppModel.build))").monospacedDigit() }
             } footer: {
-                Footnote("Lets your iPhone and iPad connect when they’re near this Mac, even without a shared Wi\u{2011}Fi network, the way AirDrop does. While it’s on, this Mac’s Wi\u{2011}Fi keeps stepping away from your network, so streaming over Wi\u{2011}Fi can stutter. Anyone nearby with Sill can find this Mac; only devices you paired can connect, unless Require pairing is off.")
+                Footnote("Sidecar connects your iPad directly to your Mac. No companion app is needed.")
             }
-            // The clipboard both ways (HostClipboard): at once, no restart. Each device has its own
-            // switch too. macOS's answer is read with the permissions (once a second while this pane
-            // shows, and when Sill becomes active), never in a preview.
-            ClipboardSection(shareClipboard: $settings.config.shareClipboard,
-                             access: previewClipboardAccess ?? model.permissions.clipboardAccess,
-                             allow: { model.permissions.allowClipboard() })
-            if let preview = previewUpdates {
-                UpdatesSection(pane: preview, automatic: .constant(true))
-            } else {
-                UpdatesSection(pane: model.updates.pane, automatic: $settings.updateCheck,
-                               actions: UpdatesSection.Actions(checkNow: { model.updates.checkNow() },
-                                                               openRelease: { NSWorkspace.shared.open($0) }))
-            }
-            Section {
-                HStack {
-                    Button("Show Log…") { model.showLog?() }
-                    Button("Reveal Log File") {
-                        if let url = HostLog.shared.fileURL { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                    }
-                    .disabled(HostLog.shared.fileURL == nil)
-                }
-            }
-            Section {
-                // A way out when the status item is hidden (a crowded menu bar, the notch).
-                Button("Quit Sill") { NSApp.terminate(nil) }
-            } footer: {
-                Footnote("Sill \(AppModel.version) (\(AppModel.build)). Free and open source.")
-            }
-        }
-    }
-
-    private var networkName: String {
-        let snapshot = model.coordinator?.status.snapshot ?? HostStatusSnapshot()
-        switch snapshot.network {
-        case .advertising(let name): return "“\(name)”"
-        case .notAdvertised: return "Not advertised (test pattern mode)"
-        case .failed: return "Not visible (the listener failed)"
-        case .waiting: return "Not yet (waiting for the network)"
-        case .starting, .registering: return "Registering…"
         }
     }
 }

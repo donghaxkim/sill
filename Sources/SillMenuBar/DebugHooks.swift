@@ -308,11 +308,11 @@ enum DebugHooks {
                 }
                 return (parts[0], delay, .height(CGFloat(h)))
             }
-            let matches = SettingsTab.allCases.filter {
+            let matches = SettingsTab.visibleTabs.filter {
                 $0.rawValue.lowercased().hasPrefix(word) || $0.title.lowercased().replacingOccurrences(of: " ", with: "").hasPrefix(word)
             }
             guard matches.count == 1, let tab = matches.first else {
-                print("SillSettingsAfter: “\(parts[1])” is no step: a tab (general, devices, streaming, virtual display, permissions, remote access, or the start of one), close, report, end or height=<points>")
+                print("SillSettingsAfter: “\(parts[1])” is no step: tablet, general, close, report, end or height=<points>")
                 return nil
             }
             return (parts[0], delay, .tab(tab))
@@ -365,14 +365,9 @@ enum DebugHooks {
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let appearances: [(String, NSAppearance.Name)] = [("light", .aqua), ("dark", .darkAqua)]
 
-        // The Devices and Remote Access panes are drawn in each of their states below instead of
-        // live (the model has no host here, so they would only ever show "off" and nothing paired).
-        // General's update section is fixed at "Not checked yet.", whatever an earlier run stored;
-        // its states are drawn alone below.
-        let neverChecked = updatePaneSamples()[0].pane
-        for tab in SettingsTab.allCases where tab != .remoteAccess && tab != .devices {
+        for tab in SettingsTab.visibleTabs {
             for (name, appearance) in appearances {
-                render(SettingsPane(tab: tab, model: model, previewUpdates: neverChecked, previewClipboardAccess: .allowed)
+                render(SettingsPane(tab: tab, model: model)
                         .background(Color(nsColor: .windowBackgroundColor)),
                        appearance: appearance, to: out.appendingPathComponent("pane-\(tab.rawValue)-\(name).png"))
             }

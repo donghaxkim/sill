@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableSuddenTermination()
         let item = StatusItemController(model: model)        // "Starting…" until the host is up
         statusItem = item
-        model.onPresentation = { [weak item] p in item?.show(p) }
         model.showSettings = { [weak self] tab in self?.showSettings(tab: tab) }
         model.settingsWindowForTests = { [weak self] in self?.settingsWindow }
         model.showLog = { [weak self] in self?.showLog() }

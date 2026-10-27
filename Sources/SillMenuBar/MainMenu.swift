@@ -8,12 +8,12 @@ enum MainMenu {
     static func make() -> NSMenu {
         let main = NSMenu()
 
-        let sill = submenu(in: main, title: "Sill")
-        sill.addItem(withTitle: "About Sill", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        sill.addItem(.separator())
-        sill.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
-        sill.addItem(.separator())
-        sill.addItem(withTitle: "Quit Sill", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let app = submenu(in: main, title: "iPad as Tablet")
+        app.addItem(withTitle: "About iPad as Tablet", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Quit iPad as Tablet", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let edit = submenu(in: main, title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")

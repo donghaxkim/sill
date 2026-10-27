@@ -403,11 +403,11 @@ final class AppModel {
         }
     }
 
-    /// First launch, or any launch until the user closes Settings on it: when a permission is
-    /// missing, Settings opens on Permissions. The test pattern needs none.
+    /// First launch, or any launch until the user closes Settings on it: when Accessibility is
+    /// missing, Settings opens on the tablet setup. Screen Recording is not needed for Sidecar input.
     private func onboardIfNeeded() {
         permissions.refresh()
-        guard !synthetic, !permissions.allGranted, !settings.permissionsOnboardingDismissed else { return }
-        showSettings?(.permissions)
+        guard !synthetic, !permissions.accessibility, !settings.permissionsOnboardingDismissed else { return }
+        showSettings?(.tablet)
     }
 }

@@ -136,7 +136,8 @@ final class HostSettings {
                             sendAudio: defaults.bool(forKey: Key.sendAudio)).validated()
         remoteAddressName = defaults.string(forKey: Key.remoteAddressName) ?? ""
         updateCheck = defaults.bool(forKey: Key.updateCheck)
-        settingsTab = defaults.string(forKey: Key.settingsTab).flatMap(SettingsTab.init(rawValue:)) ?? .general
+        let storedTab = defaults.string(forKey: Key.settingsTab).flatMap(SettingsTab.init(rawValue:))
+        settingsTab = storedTab.flatMap { SettingsTab.visibleTabs.contains($0) ? $0 : nil } ?? .tablet
         permissionsOnboardingDismissed = defaults.bool(forKey: Key.permissionsOnboardingDismissed)
         askedScreenRecording = defaults.bool(forKey: Key.askedScreenRecording)
         askedAccessibility = defaults.bool(forKey: Key.askedAccessibility)

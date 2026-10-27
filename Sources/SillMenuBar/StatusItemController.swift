@@ -19,6 +19,7 @@ struct MenuEntry: Equatable {
         case setSendAudio(Bool)
         case setMaxFPS(Int), setBitrate(Int), setCaptureScale(CGFloat)
         case toggleLaunchAtLogin
+        case connectTablet, disconnectTablet
         case showLog, showSettings, quit
         /// Settings on one tab (Remote Access…); the plain `showSettings` stays for ⌘,. (Swift
         /// allows no second case named `showSettings`.)
@@ -157,13 +158,24 @@ enum MenuBuilder {
     /// check found.
     @MainActor
     static func entries(for model: AppModel) -> [MenuEntry] {
-        let login = LoginState(available: model.loginItem.available, on: model.loginItem.isOn,
-                               needsApproval: model.loginItem.needsApproval, error: model.loginItem.error)
-        let permissions = PermissionState(screenRecording: model.permissions.screenRecording,
-                                          accessibility: model.permissions.accessibility)
-        let update = model.updates.offer.flatMap { offer in model.updates.runningVersion.map { (offer: offer, running: $0) } }
-        return entries(presentation: model.presentation, config: model.settings.config, login: login, permissions: permissions,
-                       update: update)
+        let tablet = model.tablet
+        var menu = [MenuEntry(kind: .card, title: "iPad as Tablet", subtitle: tablet.statusText)]
+
+        if tablet.isConnected {
+            menu.append(MenuEntry(kind: .item, title: "Disconnect from \(tablet.connectedDeviceName ?? "iPad")",
+                                  action: .disconnectTablet))
+        } else if tablet.canConnect {
+            menu.append(MenuEntry(kind: .item, title: "Connect to \(tablet.selectedDeviceName)", action: .connectTablet))
+        } else {
+            menu.append(MenuEntry(kind: .item, title: "Choose an iPad…", action: .showSettingsTab(.tablet)))
+        }
+
+        menu.append(.separator)
+        menu.append(MenuEntry(kind: .item, title: "Tablet Settings…", key: ",", action: .showSettingsTab(.tablet)))
+        menu.append(MenuEntry(kind: .item, title: "General Settings…", action: .showSettingsTab(.general)))
+        menu.append(.separator)
+        menu.append(MenuEntry(kind: .item, title: "Quit iPad as Tablet", key: "q", action: .quit))
+        return menu
     }
 
     /// The menu as text, for the previews: "✓" checked, "⚠" attention, "(off)" disabled.
@@ -205,9 +217,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let menu = NSMenu()
     private let model: AppModel
-    private let card: NSHostingView<LiveStatusCard>
-    private var glyph: StatusGlyph.State?
-    private var menuOpen = false
+    private let card: NSHostingView<LiveTabletStatusCard>
 
     private static let attentionImage: NSImage? = {
         let config = NSImage.SymbolConfiguration(paletteColors: [.systemOrange])
@@ -219,39 +229,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     init(model: AppModel) {
         self.model = model
-        card = NSHostingView(rootView: LiveStatusCard(model: model))
+        card = NSHostingView(rootView: LiveTabletStatusCard(tablet: model.tablet))
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
-        item.autosaveName = "SillStatusItem"
+        item.autosaveName = "iPadAsTabletStatusItem"
         menu.delegate = self
         menu.autoenablesItems = false
         item.menu = menu
-        show(model.presentation)
-    }
-
-    /// The glyph, tooltip and accessibility label for a new presentation.
-    func show(_ p: StatusPresentation) {
-        guard let button = item.button else { return }
-        if glyph != p.glyph {
-            glyph = p.glyph
-            button.image = StatusGlyph.image(p.glyph)
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "pencil.tip.crop.circle", accessibilityDescription: "iPad as Tablet")
+            button.toolTip = "iPad as Tablet"
+            button.setAccessibilityLabel("iPad as Tablet")
         }
-        button.toolTip = p.tooltip
-        button.setAccessibilityLabel(p.accessibilityLabel)
-        // A device joining while the menu is open makes the card taller.
-        if menuOpen { card.frame.size = card.fittingSize }
     }
 
     // MARK: NSMenuDelegate
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        model.permissions.refresh()
-        model.loginItem.refresh()
+        model.tablet.refreshDevices()
         rebuild()
     }
-
-    func menuWillOpen(_ menu: NSMenu) { menuOpen = true }
-    func menuDidClose(_ menu: NSMenu) { menuOpen = false }
 
     private func rebuild() {
         menu.removeAllItems()
@@ -296,6 +293,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .allowScreenRecording: model.permissions.requestScreenRecording()
         case .allowAccessibility: model.permissions.requestAccessibility()
         case .openPrivacy: model.permissions.openPrivacyPane()
+        case .connectTablet: model.tablet.connectSelected()
+        case .disconnectTablet: model.tablet.disconnect()
         case .setVirtualDisplay(let on): model.settings.config.virtualDisplay = on
         case .setDirectWireless(let on): model.settings.config.directWireless = on
         case .setSendAudio(let on): model.settings.config.sendAudio = on

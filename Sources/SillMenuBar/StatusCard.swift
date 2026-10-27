@@ -38,6 +38,32 @@ struct LiveStatusCard: View {
     }
 }
 
+/// The compact status shown in the tablet configurator's menu bar menu.
+struct LiveTabletStatusCard: View {
+    let tablet: SidecarTabletModel
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: tablet.isConnected ? "checkmark.circle.fill" : "ipad")
+                .font(.title3)
+                .foregroundStyle(tablet.isConnected ? .green : .secondary)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("iPad as Tablet")
+                    .font(.headline)
+                Text(tablet.statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(width: 300, alignment: .leading)
+    }
+}
+
 private struct StatusRow: View {
     let row: StatusPresentation.Row
 

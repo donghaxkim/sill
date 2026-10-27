@@ -42,7 +42,7 @@ final class PermissionsModel {
         if ax != accessibility { accessibility = ax }
         let clipboard = MacClipboard.access()
         if clipboard != clipboardAccess { clipboardAccess = clipboard }
-        if sr && ax && settings.permissionsOnboardingDismissed { settings.permissionsOnboardingDismissed = false }
+        if ax && settings.permissionsOnboardingDismissed { settings.permissionsOnboardingDismissed = false }
     }
 
     /// Allow… for Screen Recording. The first time, the system's own alert, which offers System

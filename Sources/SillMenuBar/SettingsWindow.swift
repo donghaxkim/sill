@@ -6,6 +6,9 @@ import SillHostCore
 enum SettingsTab: String, CaseIterable {
     case general, tablet, devices, streaming, virtualDisplay, permissions, remoteAccess
 
+    /// Only the settings needed to configure an iPad as a Mac tablet are shown to users.
+    static let visibleTabs: [SettingsTab] = [.tablet, .general]
+
     var title: String {
         switch self {
         case .general: "General"
@@ -57,7 +60,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.model = model
         tabs = SettingsTabController(model: model)
         let window = NSWindow(contentViewController: tabs)
-        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.title = "iPad as Tablet"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.moveToActiveSpace)
         heightCap = tabs.view.heightAnchor.constraint(lessThanOrEqualToConstant: Self.noCap)
@@ -81,11 +85,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not from a nib") }
 
-    /// Opens Settings in front, on `tab` or the last one shown, and remembers that tab for the
-    /// next launch. Remembered here as well as on a tab click: a tab selected while the window
-    /// was hidden is not saved by the tab controller (see its `tabView(_:didSelect:)`).
+    /// Opens Settings in front. Generic entry points lead to Tablet; explicit menu routes may open
+    /// General. The selected tab is kept for the current window session.
     func show(tab: SettingsTab?) {
-        tabs.select(tab ?? model.settings.settingsTab)
+        tabs.select(tab ?? .tablet)
         guard let window else { return }
         refit()
         WindowPlacement.bringForward(window)
@@ -98,10 +101,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Closed by the user while a permission is still missing: later launches (a login item)
-        // stop opening it and only mark the status item.
+        // Closed by the user before Accessibility is allowed: do not reopen setup automatically.
         model.permissions.refresh()
-        if !model.permissions.allGranted { model.settings.permissionsOnboardingDismissed = true }
+        if !model.permissions.accessibility { model.settings.permissionsOnboardingDismissed = true }
         return true
     }
 
@@ -250,7 +252,7 @@ final class SettingsTabController: NSTabViewController {
         self.model = model
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
-        for tab in SettingsTab.allCases {
+        for tab in SettingsTab.visibleTabs {
             let host = NSHostingController(rootView: SettingsPane(tab: tab, model: model))
             host.sizingOptions = [.preferredContentSize]
             host.title = tab.title
@@ -267,11 +269,12 @@ final class SettingsTabController: NSTabViewController {
 
     var current: SettingsTab {
         let index = max(0, selectedTabViewItemIndex)
-        return (tabViewItems[index].identifier as? String).flatMap(SettingsTab.init(rawValue:)) ?? .general
+        return (tabViewItems[index].identifier as? String).flatMap(SettingsTab.init(rawValue:)) ?? .tablet
     }
 
     func select(_ tab: SettingsTab) {
-        if let index = tabViewItems.firstIndex(where: { ($0.identifier as? String) == tab.rawValue }) {
+        let selected = SettingsTab.visibleTabs.contains(tab) ? tab : .tablet
+        if let index = tabViewItems.firstIndex(where: { ($0.identifier as? String) == selected.rawValue }) {
             selectedTabViewItemIndex = index
         }
     }
