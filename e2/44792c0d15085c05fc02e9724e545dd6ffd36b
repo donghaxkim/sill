@@ -1,0 +1,19 @@
+.gitignore
+  s_4668ba23be90d9::t_0c53b88bd2a1bb 8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e244792c0d15085c05fc02e9724e545dd6ffd36b",
+  "prompts": {},
+  "sessions": {
+    "s_4668ba23be90d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17f11-f9e4-7310-be7b-87fe3988a827",
+        "model": "deepseek-flash"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
