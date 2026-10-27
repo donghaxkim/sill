@@ -587,5 +587,7 @@ private final class SidecarPointerRouter {
                                   mouseCursorPosition: point, mouseButton: button) else { return }
         lastLocation = point
         event.post(tap: .cghidEventTap)
+        // Keep the visible cursor aligned with synthetic Sidecar input events.
+        _ = CGWarpMouseCursorPosition(point)
     }
 }
