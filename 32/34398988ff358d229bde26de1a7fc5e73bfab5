@@ -1,0 +1,22 @@
+Sources/SillMenuBar/SidecarTablet.swift
+  s_1fa5bf0c25d94f::t_4e0d46713d9de4 177,226-227
+  s_1fa5bf0c25d94f::t_6abeab7ee067be 228-229
+Sources/SillMenuBar/SidecarTabletPane.swift
+  s_1fa5bf0c25d94f::t_4e0d46713d9de4 54,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3234398988ff358d229bde26de1a7fc5e73bfab5",
+  "prompts": {},
+  "sessions": {
+    "s_1fa5bf0c25d94f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bac-3a70-7021-9ba5-b44269046750",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
