@@ -20,6 +20,7 @@ struct SettingsPane: View {
             switch tab {
             case .general: GeneralPane(model: model, settings: model.settings, previewUpdates: previewUpdates,
                                        previewClipboardAccess: previewClipboardAccess)
+            case .tablet: SidecarTabletPane(tablet: model.tablet, permissions: model.permissions)
             case .devices: LiveDevicesPane(model: model, settings: model.settings)
             case .streaming: StreamingPane(model: model, settings: model.settings)
             case .virtualDisplay: VirtualDisplayPane(model: model, settings: model.settings)

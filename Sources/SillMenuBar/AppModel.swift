@@ -11,6 +11,7 @@ import StreamProtocol
 final class AppModel {
     let settings: HostSettings
     let permissions: PermissionsModel
+    let tablet = SidecarTabletModel()
     let loginItem = LoginItemModel()
     /// The update check (GitHub's releases feed): the menu's "Sill 0.4 Is Available…" and Settings ›
     /// General's section. Started once the host has started, or could not.
@@ -88,6 +89,7 @@ final class AppModel {
     /// running, asking for no permission at launch. Never exits on an error.
     func start() {
         observePresentation()
+        tablet.start()
         // The lock notifications: the ask rule's second witness that this Mac is locked
         // (SessionLock), beside the session dictionary the CLI has alone.
         SessionLock.shared.watchNotifications()

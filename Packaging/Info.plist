@@ -36,6 +36,8 @@
 	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Sill is free and open source.</string>
+	<key>NSIsTouchNative</key>
+	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Sill makes this Mac visible to your iPhone and iPad on the same network so they can stream its windows.</string>
 	<key>NSPrincipalClass</key>

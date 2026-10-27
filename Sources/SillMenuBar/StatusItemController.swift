@@ -144,6 +144,8 @@ enum MenuBuilder {
             menu.append(MenuEntry(kind: .item, title: "Pair iPhone or iPad…", enabled: p.canPair, action: .showPairing))
         }
         menu.append(MenuEntry(kind: .item, title: "Show Log…", action: .showLog))
+        menu.append(MenuEntry(kind: .item, title: "Tablet Settings…", subtitle: "Use an iPad as a Mac tablet",
+                              action: .showSettingsTab(.tablet)))
         menu.append(MenuEntry(kind: .item, title: "Settings…", key: ",", action: .showSettings))
         menu.append(.separator)
         menu.append(MenuEntry(kind: .item, title: "Quit Sill", key: "q", action: .quit))
