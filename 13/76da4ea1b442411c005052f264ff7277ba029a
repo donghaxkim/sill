@@ -1,0 +1,44 @@
+Sources/SillMenuBar/SidecarTablet.swift
+  s_397ee9e1a9668d::t_90c993ff01b525 261,402,563,574-577,590-595,597,600,610,612,619-621,623-624,650-652,664,672,675,681,689-692,694-707,709-713,715-718,781-782,787,790,798,801-820,823-825,830,836,839-844,846,848-849,852,854,856
+  s_397ee9e1a9668d::t_58094ae17ceec0 857
+Tests/checks/sidecar-tablet/main.swift
+  s_397ee9e1a9668d::t_6f5100785fc61c 1-135
+Sources/SillMenuBar/SidecarPencilInput.swift
+  s_397ee9e1a9668d::t_ddb4b82db783a1 9,13,31,45-49,52-53,56,79-81,84,92-94,99,105,127,129-130,133,137,141-142,153,161-170
+  s_397ee9e1a9668d::t_90c993ff01b525 1-8,10-12,14-30,32-44,50-51,54-55,57-78,82-83,85-91,95-98,100-104,106-126,128,131-132,134-136,138-140,144-152,154-160,171-182
+  s_397ee9e1a9668d::t_4c1b4462d195f1 143
+Tests/checks/sidecar-tablet/run.sh
+  s_397ee9e1a9668d::t_90c993ff01b525 1-9
+README.md
+  s_397ee9e1a9668d::t_c4dc6a05ca870c 27-29
+Sources/SillMenuBar/SidecarTabletPane.swift
+  s_4668ba23be90d9::t_3b16a4e52bbd09 129
+Sources/SillMenuBar/TabletSurfaceGeometry.swift
+  s_397ee9e1a9668d::t_19d38a8996feca 1-68
+Tests/checks/README.md
+  s_4668ba23be90d9::t_be196baeb271c9 85,88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1376da4ea1b442411c005052f264ff7277ba029a",
+  "prompts": {},
+  "sessions": {
+    "s_397ee9e1a9668d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17d89-8de4-7320-8ccc-6368be880baf",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    },
+    "s_4668ba23be90d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17f11-f9e4-7310-be7b-87fe3988a827",
+        "model": "deepseek-flash"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
