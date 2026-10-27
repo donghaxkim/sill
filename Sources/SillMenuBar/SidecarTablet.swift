@@ -174,9 +174,8 @@ final class SidecarTabletModel {
             updateSurface()
         }
     }
-    var activeArea: TabletActiveArea {
+    private(set) var activeArea: TabletActiveArea {
         didSet {
-            activeArea = activeArea.bounded()
             if let data = try? JSONEncoder().encode(activeArea) { defaults.set(data, forKey: Key.activeArea) }
             updateSurface()
         }
@@ -222,6 +221,10 @@ final class SidecarTabletModel {
         guard connectAtLaunch else { return }
         if selectedDeviceName.isEmpty, devices.count == 1 { selectedDeviceName = devices[0].name }
         connectSelected()
+    }
+
+    func setActiveArea(_ area: TabletActiveArea) {
+        activeArea = area.bounded()
     }
 
     func refreshDevices() {

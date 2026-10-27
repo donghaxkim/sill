@@ -51,7 +51,7 @@ struct SidecarTabletPane: View {
 
                 Toggle("Map the full iPad surface", isOn: Binding(
                     get: { tablet.activeArea.isFull },
-                    set: { full in tablet.activeArea = full ? .full : TabletActiveArea(x: 0.1, y: 0.1, width: 0.8, height: 0.8) }
+                    set: { full in tablet.setActiveArea(full ? .full : TabletActiveArea(x: 0.1, y: 0.1, width: 0.8, height: 0.8)) }
                 ))
 
                 LabeledContent("Mapped area") {
@@ -128,7 +128,7 @@ struct SidecarTabletPane: View {
             set: { value in
                 var area = tablet.activeArea
                 area[keyPath: keyPath] = value
-                tablet.activeArea = area
+                tablet.setActiveArea(area)
             }
         )
     }
