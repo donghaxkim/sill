@@ -1,0 +1,20 @@
+Sources/SillMenuBar/SidecarTablet.swift
+  s_1fa5bf0c25d94f::t_3d4e83dde93fd4 590
+  s_1fa5bf0c25d94f::t_5c588c44d39ec8 591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25e134bcd703a361e5a20de0ef48885fa8f1b1e7",
+  "prompts": {},
+  "sessions": {
+    "s_1fa5bf0c25d94f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17bac-3a70-7021-9ba5-b44269046750",
+        "model": "gpt-6-luna"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
