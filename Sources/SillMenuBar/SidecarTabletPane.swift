@@ -54,6 +54,10 @@ struct SidecarTabletPane: View {
                     set: { full in tablet.activeArea = full ? .full : TabletActiveArea(x: 0.1, y: 0.1, width: 0.8, height: 0.8) }
                 ))
 
+                LabeledContent("Mapped area") {
+                    TabletAreaPreview(area: tablet.activeArea)
+                }
+
                 if !tablet.activeArea.isFull {
                     areaSlider("Left", keyPath: \.x)
                     areaSlider("Top", keyPath: \.y)
@@ -123,5 +127,40 @@ struct SidecarTabletPane: View {
                 tablet.activeArea = area
             }
         )
+    }
+}
+
+private struct TabletAreaPreview: View {
+    let area: TabletActiveArea
+
+    var body: some View {
+        Canvas { context, size in
+            let tablet = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 4)
+            let tabletPath = Path(roundedRect: tablet, cornerSize: CGSize(width: 14, height: 14))
+            context.fill(tabletPath, with: .color(Color(nsColor: NSColor(calibratedWhite: 0.075, alpha: 1))))
+            context.stroke(tabletPath, with: .color(.white.opacity(0.18)), lineWidth: 1)
+
+            let mapped = CGRect(x: tablet.minX + tablet.width * area.x,
+                                y: tablet.minY + tablet.height * area.y,
+                                width: tablet.width * area.width,
+                                height: tablet.height * area.height)
+            if !area.isFull {
+                let inactive = [
+                    CGRect(x: tablet.minX, y: tablet.minY, width: tablet.width, height: mapped.minY - tablet.minY),
+                    CGRect(x: tablet.minX, y: mapped.maxY, width: tablet.width, height: tablet.maxY - mapped.maxY),
+                    CGRect(x: tablet.minX, y: mapped.minY, width: mapped.minX - tablet.minX, height: mapped.height),
+                    CGRect(x: mapped.maxX, y: mapped.minY, width: tablet.maxX - mapped.maxX, height: mapped.height),
+                ]
+                for rect in inactive where !rect.isEmpty {
+                    context.fill(Path(rect), with: .color(.black.opacity(0.62)))
+                }
+            }
+
+            let mappedPath = Path(roundedRect: mapped.insetBy(dx: 1, dy: 1), cornerSize: CGSize(width: 9, height: 9))
+            context.fill(mappedPath, with: .color(Color(nsColor: NSColor.controlAccentColor).opacity(0.10)))
+            context.stroke(mappedPath, with: .color(Color(nsColor: NSColor.controlAccentColor).opacity(0.88)), lineWidth: 1.5)
+        }
+        .frame(width: 210, height: 132)
+        .accessibilityLabel("iPad mapped area preview")
     }
 }

@@ -399,15 +399,32 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard !activeArea.isFull else { return }
-        let rect = NSRect(x: bounds.minX + bounds.width * activeArea.x,
-                          y: bounds.minY + bounds.height * (1 - activeArea.y - activeArea.height),
-                          width: bounds.width * activeArea.width,
-                          height: bounds.height * activeArea.height)
-        NSColor.white.withAlphaComponent(0.24).setStroke()
-        let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
-        outline.lineWidth = 1
-        outline.stroke()
+        let tabletRect = bounds.insetBy(dx: 16, dy: 16)
+        let tabletPath = NSBezierPath(roundedRect: tabletRect, xRadius: 18, yRadius: 18)
+        NSColor(calibratedWhite: 0.075, alpha: 1).setFill()
+        tabletPath.fill()
+        NSColor.white.withAlphaComponent(0.16).setStroke()
+        tabletPath.lineWidth = 1
+        tabletPath.stroke()
+
+        let activeRect = NSRect(x: tabletRect.minX + tabletRect.width * activeArea.x,
+                                y: tabletRect.minY + tabletRect.height * (1 - activeArea.y - activeArea.height),
+                                width: tabletRect.width * activeArea.width,
+                                height: tabletRect.height * activeArea.height)
+        if !activeArea.isFull {
+            let inactivePath = NSBezierPath(rect: tabletRect)
+            inactivePath.append(NSBezierPath(roundedRect: activeRect, xRadius: 10, yRadius: 10))
+            inactivePath.windingRule = .evenOdd
+            NSColor.black.withAlphaComponent(0.62).setFill()
+            inactivePath.fill()
+        }
+
+        let activePath = NSBezierPath(roundedRect: activeRect.insetBy(dx: 1, dy: 1), xRadius: 10, yRadius: 10)
+        NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
+        activePath.fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.88).setStroke()
+        activePath.lineWidth = 1.5
+        activePath.stroke()
     }
 
     override func mouseMoved(with event: NSEvent) { route(event.locationInWindow) }
