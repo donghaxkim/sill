@@ -90,6 +90,19 @@ final class InputInjector {
                 }
             }
             pointer(action, at: point(x, y, in: rect))
+        case .button(let action):
+            guard action != .move else { return }
+            pointer(action, at: pointerNow())
+        case .relativePointer(let dx, let dy):
+            guard !rect.isNull, dx.isFinite, dy.isFinite else { return }
+            let current = pointerNow()
+            let next = CGPoint(
+                x: min(max(current.x + min(max(dx, -1), 1) * rect.width, rect.minX), rect.maxX),
+                y: min(max(current.y + min(max(dy, -1), 1) * rect.height, rect.minY), rect.maxY))
+            pointer(.move, at: next)
+        case .relativeScroll(let dx, let dy):
+            guard !rect.isNull, dx.isFinite, dy.isFinite else { return }
+            scroll(at: pointerNow(), dx: dx * rect.width, dy: dy * rect.height)
         case .scroll(let x, let y, let dx, let dy):
             scroll(at: point(x, y, in: rect), dx: dx * rect.width, dy: dy * rect.height)
         case .text(let string):

@@ -124,6 +124,10 @@ final class StreamServer {
         var acceptedPeerToPeer = false
         /// A hello (kind 23) came on this connection: only the first counts.
         var helloSeen = false
+        /// A session mode is known from its hello, or from the short compatibility timeout for an
+        /// older client that sends no hello.
+        var modeReady = false
+        var tabletInputOnly = false
         /// The input messages (kind 8) read from it. Every kind 26 sent to it carries the count, so the
         /// device can drop one the host built before it read that device's latest input
         /// (docs/pointer-visibility-plan.md §3.3).
@@ -159,8 +163,10 @@ final class StreamServer {
     /// A client fell behind and lost a delta frame; the encoder should produce a keyframe now
     /// rather than in up to 4 s. Called on the network queue.
     var onKeyframeNeeded: (() -> Void)?
-    /// Number of connected clients changed. Called on the network queue. Zero means the host can idle.
+    /// Number of connected video clients changed. Called on the network queue. Zero means the host can idle.
     var onClientCountChanged: ((Int) -> Void)?
+    /// A client's first hello (or the legacy-client timeout) decided whether it needs video.
+    var onClientModeReady: ((NWConnection, Bool) -> Void)?
     /// One connection ended (before `onClientCountChanged`), for per-client state such as its rate.
     var onClientDisconnected: ((NWConnection) -> Void)?
     /// The listener failed. Called on the network queue after "Listener failed: …" is printed.
@@ -987,11 +993,23 @@ final class StreamServer {
     private func register(_ client: Client) {
         client.connectedAt = Date().timeIntervalSince1970
         client.lastHeardAt = client.connectedAt
-        clients[ObjectIdentifier(client.connection)] = client
-        onClientCountChanged?(clients.count)
+        let id = ObjectIdentifier(client.connection)
+        clients[id] = client
+        // A new fork client announces its input-only intent in its first hello. Give that message
+        // a chance to arrive before the coordinator starts ScreenCaptureKit's catalog polling.
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, let current = self.clients[id], !current.modeReady else { return }
+            current.modeReady = true
+            current.tabletInputOnly = false
+            self.onClientCountChanged?(self.videoClientCount)
+            self.onClientModeReady?(current.connection, false)
+        }
         updateTicking()
         updateSweep()
     }
+
+    /// On `queue`: only clients using Sill's window stream make the catalog and encoder active.
+    private var videoClientCount: Int { clients.values.filter { $0.modeReady && !$0.tabletInputOnly }.count }
 
     /// A session a TLS door admitted, already `.ready` and pinned, once the device gate has let it
     /// in (its Door runs `gate` first, and judges again what changed meanwhile): registered like a
@@ -1233,13 +1251,23 @@ final class StreamServer {
     /// the floor at "0" every device is served, and above it the gate has judged it already. On
     /// `queue`.
     private func took(_ hello: Hello, from client: Client) {
+        let firstHello = !client.helloSeen
         client.helloSeen = true
         let c = client.connection
+        if firstHello {
+            let tabletOnly = hello.tabletInputOnly == true
+            if !client.modeReady || client.tabletInputOnly != tabletOnly {
+                client.modeReady = true
+                client.tabletInputOnly = tabletOnly
+                onClientCountChanged?(videoClientCount)
+                onClientModeReady?(c, tabletOnly)
+            }
+        }
         let name = SafeText.label(hello.device ?? "")
         if client.device == nil, !name.isEmpty { client.device = name }
         print(DeviceGate.helloLine(hello, endpoint: "\(c.endpoint)"))
         // The Mac's sound goes only to a device that said it plays a codec this host makes.
-        client.audioCodec = AudioCodec.choose(offered: hello.audio)
+        client.audioCodec = client.tabletInputOnly ? nil : AudioCodec.choose(offered: hello.audio)
         updateAudioListeners()
         onClientHello?(c, hello)
     }
@@ -1320,7 +1348,7 @@ final class StreamServer {
         pointerWatch?.clientLeft(id)
         print("Client left: \(client.connection.endpoint)")
         onClientDisconnected?(client.connection)
-        onClientCountChanged?(clients.count)
+        onClientCountChanged?(videoClientCount)
         updateTicking()
         updateSweep()
         if client.audioCodec != nil { updateAudioListeners() }
@@ -1358,10 +1386,12 @@ final class StreamServer {
     /// built for a connection the server has just forgotten, before the coordinator hears it left).
     /// Thread-safe.
     func send(each messages: [(NWConnection, StreamMessage)]) {
-        let items = messages.map { (ObjectIdentifier($0.0), $0.1.serialized()) }
+        let items = messages.map { (ObjectIdentifier($0.0), $0.1.kind, $0.1.serialized()) }
         queue.async { [self] in
-            for (id, data) in items {
+            for (id, kind, data) in items {
                 guard let client = clients[id], client.connection.state == .ready else { continue }
+                // A tablet-only session receives identity and protocol messages, never screen content.
+                if client.tabletInputOnly, Self.isScreenContent(kind) { continue }
                 send(data, to: client)
             }
         }
@@ -1375,7 +1405,28 @@ final class StreamServer {
                 print("send: no client for \(connection.endpoint) (\(clients.count) known)")
                 return
             }
+            if client.tabletInputOnly, Self.isScreenContent(message.kind) { return }
             send(data, to: client)
+        }
+    }
+
+    /// The one catalog-shaped message an input-only client receives: an empty readiness list.
+    func sendTabletReady(_ message: StreamMessage, to connection: NWConnection) {
+        guard message.kind == .windowList else { return }
+        let id = ObjectIdentifier(connection)
+        let data = message.serialized()
+        queue.async { [self] in
+            guard let client = clients[id], client.tabletInputOnly, client.connection.state == .ready else { return }
+            send(data, to: client)
+        }
+    }
+
+    private static func isScreenContent(_ kind: StreamMessageKind) -> Bool {
+        switch kind {
+        case .parameterSets, .frame, .thumbnail, .appIcon, .appList, .windowList, .cursorShape, .audio:
+            return true
+        default:
+            return false
         }
     }
 
@@ -1490,6 +1541,7 @@ final class StreamServer {
             var wantKeyframe = false
             defer { if wantKeyframe { onKeyframeNeeded?() } }
             for client in clients.values where client.connection.state == .ready {
+                if client.tabletInputOnly, Self.isScreenContent(message.kind) { continue }
                 if message.kind == .frame, client.route.isRemote {
                     if paceRemote(client, message: message, data: data) { wantKeyframe = true }
                     continue
@@ -1566,7 +1618,7 @@ final class StreamServer {
     /// has `audioCap` messages untaken. Thread-safe.
     func broadcastAudio(packets: Data, epoch: Int) {
         queue.async { [self] in
-            for client in clients.values where client.audioCodec == AudioCodec.aacELD && client.connection.state == .ready {
+            for client in clients.values where !client.tabletInputOnly && client.audioCodec == AudioCodec.aacELD && client.connection.state == .ready {
                 if client.audioEpochSent != epoch {
                     guard let format = audioFormat, format.epoch == epoch else { continue }
                     sendAudio(format.data, to: client)

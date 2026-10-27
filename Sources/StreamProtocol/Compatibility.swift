@@ -115,10 +115,13 @@ public struct Hello: Codable, Sendable, Equatable {
     /// ["aac-eld"]). Nil from a device that plays none, every device before 2026-09-27: a host sends
     /// it no kind 43 (Audio.swift).
     public var audio: [String]?
+    /// This session is a tablet surface without a streamed picture. Nil from older clients, which
+    /// keep Sill's window-streaming behavior.
+    public var tabletInputOnly: Bool?
 
     public init(appVersion: String? = nil, build: String? = nil, protocol: Int? = nil, device: String? = nil,
-                audio: [String]? = nil) {
+                audio: [String]? = nil, tabletInputOnly: Bool? = nil) {
         self.appVersion = appVersion; self.build = build; self.protocol = `protocol`; self.device = device
-        self.audio = audio
+        self.audio = audio; self.tabletInputOnly = tabletInputOnly
     }
 }

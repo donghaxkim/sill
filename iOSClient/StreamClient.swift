@@ -132,6 +132,8 @@ final class StreamClient: ObservableObject {
     /// those seen only over peer-to-peer Wi-Fi.
     @Published var macs: [FoundMac] = []
     @Published var connected = false
+    /// This fork's primary session: a tablet surface that sends input without requesting a video stream.
+    let tabletInputOnly = true
     /// The nearby (peer-to-peer) browser runs: the status line says so, or under the hint the line
     /// in Search Nearby's place.
     @Published var searchingNearby = false
@@ -1877,7 +1879,7 @@ final class StreamClient: ObservableObject {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         // The codecs of the Mac's sound it plays: a Mac sends kind 43 only to a device that lists one.
         return Wire.encode(Hello(appVersion: version, build: build, protocol: SillProtocol.current, device: ClientStatsReporter.deviceName,
-                                 audio: AudioCodec.devicePlays))
+                                 audio: nil, tabletInputOnly: true))
     }()
 
     /// The hello, the first thing on every session connection, written straight to `c` before
@@ -3327,6 +3329,7 @@ final class StreamClient: ObservableObject {
     /// request (the Desktop on a connection's first list, a pick made again after a move), which
     /// is not the person's doing.
     private func request(_ source: StreamSource) {
+        guard !tabletInputOnly else { return }
         choicesSent += 1
         send(.selectSource, Wire.encode(source))
         #if DEBUG
@@ -3617,7 +3620,7 @@ final class StreamClient: ObservableObject {
         switch event {
         case .pointer(_, let x, let y): sent = .pointer(CGPoint(x: x, y: y))
         case .scroll(let x, let y, _, _), .scrollGesture(_, let x, let y): sent = .scroll(CGPoint(x: x, y: y))
-        case .text, .key: sent = .other
+        case .button, .relativePointer, .relativeScroll, .text, .key: sent = .other
         }
         guard pointerFeed.sent(sent, now: CACurrentMediaTime()) else { return }
         #if DEBUG
@@ -3785,7 +3788,7 @@ final class StreamClient: ObservableObject {
                 if self.hostProtocol != list.protocol { self.hostProtocol = list.protocol }
                 if self.hostGestures != list.gestures { self.hostGestures = list.gestures }
                 // The clipboard: subscribe (or stop) as the Mac's word and this device's switch say.
-                self.hostClipboardChanged(list.clipboard)
+                if !self.tabletInputOnly { self.hostClipboardChanged(list.clipboard) }
                 if !self.sessionListed {
                     self.sessionListed = true
                     #if DEBUG
@@ -3800,7 +3803,7 @@ final class StreamClient: ObservableObject {
                     self.moveHomeIfListed()
                     // Once per connection, now that the Mac has let this device in: the Mac's menus,
                     // their top level now and again whenever it changes (a Mac from before them skips it).
-                    self.subscribeToMenus()
+                    if !self.tabletInputOnly { self.subscribeToMenus() }
                     #if DEBUG
                     InputScript.sessionListed(self)   // -SillInputScript: its clock starts here
                     SettingsScript.sessionListed(self)   // -SillSettingsScript: and this one's
@@ -3816,7 +3819,7 @@ final class StreamClient: ObservableObject {
                 self.thumbnails = self.thumbnails.filter { live.contains($0.key) }
                 // The first list after a move without a fence: if the Mac stopped the stream meanwhile,
                 // what this device was watching is picked again (`resumeSource`).
-                if let resume = self.resumeSource {
+                if !self.tabletInputOnly, let resume = self.resumeSource {
                     self.resumeSource = nil
                     if list.active == .none {
                         var pick = resume
@@ -3827,13 +3830,15 @@ final class StreamClient: ObservableObject {
                         self.request(pick)
                         return
                     }
+                } else if self.tabletInputOnly {
+                    self.resumeSource = nil
                 }
                 // The device starts on the Desktop, never on an empty panel (DiscoveryPolicy.autoDesktop):
                 // on the first list of a connection, again when the Mac stopped the Desktop it streamed
                 // (its capture stopped: issue #69), and when the window being watched has closed. Not
                 // when a pick failed (the host still lists the window): that is the user's to retry. At
                 // most once every 10 s, so a host that cannot start the Desktop does not loop.
-                if list.active == .none, !Self.noAutoDesktop {
+                if list.active == .none, !self.tabletInputOnly, !Self.noAutoDesktop {
                     let watched: DiscoveryPolicy.Watched
                     switch previous {
                     case .none: watched = .nothing

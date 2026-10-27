@@ -255,6 +255,8 @@ package final class StreamCoordinator {
     package let remote: RemoteAccess?
     /// Each admitted connection's route (home and its origin, or the remote door's), from the server.
     private var routes: [ObjectIdentifier: ClientRoute] = [:]
+    /// Connected clients that asked for the tablet-only session and map input to the Mac display.
+    private var tabletDevices: Set<ObjectIdentifier> = []
     /// Away from home (docs/remote-bundle-plan.md §5; AwayPolicy): every connected device is away,
     /// so the away quality is the target. Kept while no device is connected; the next to register
     /// decides (`routesChanged`). What the Mac's card, menu and every device are told.
@@ -426,10 +428,21 @@ package final class StreamCoordinator {
                 self.routesChanged(joined: id, endpoint: "\(connection.endpoint)")
                 // A sleeping display gives black frames: the session's start wakes it, as a key would.
                 self.deviceActive(.connect, connection)
-                // Catalog first: the client's UI needs it even if the keyframe is slow to come.
-                self.catalog.thumbnailsWanted = true
-                self.sendCatalog(to: connection)
-                self.encoder?.requestKeyframe()
+            }
+        }
+        server.onClientModeReady = { [weak self] connection, tabletOnly in
+            let id = ObjectIdentifier(connection)
+            Task { @MainActor in
+                guard let self else { return }
+                if tabletOnly {
+                    self.tabletDevices.insert(id)
+                    self.sendTabletSessionReady(to: connection)
+                } else {
+                    self.tabletDevices.remove(id)
+                    self.catalog.thumbnailsWanted = true
+                    self.sendCatalog(to: connection)
+                    self.encoder?.requestKeyframe()
+                }
             }
         }
         // Each device's link (LinkJudge): the report its kind 16 carries, the card's row, one line.
@@ -449,6 +462,7 @@ package final class StreamCoordinator {
                 self.settingsArrivals[ObjectIdentifier(connection)] = nil
                 self.settingsIgnoredLineAt[ObjectIdentifier(connection)] = nil
                 let id = ObjectIdentifier(connection)
+                self.tabletDevices.remove(id)
                 self.gestureArrivals[id] = nil
                 self.keyframeRequestAt[id] = nil
                 self.routes[id] = nil
@@ -657,7 +671,7 @@ package final class StreamCoordinator {
         if config.sendAudio { audio.prepare() }       // the codec, loaded before the first chunk needs it
         server.start()
         remote?.apply(config)        // the remote door, when Remote Access is on (or a pairing window opens later)
-        if promptForPermissions || CGPreflightScreenCaptureAccess() { await catalog.refreshWindows() }
+        if promptForPermissions { await catalog.refreshWindows() }
         if let match = preselect?.lowercased(),
            let w = catalog.infos.first(where: { $0.appName.lowercased().contains(match) || $0.title.lowercased().contains(match) }) {
             await select(.window(w.id), bringForward: true)   // a pick, made on the command line
@@ -985,7 +999,15 @@ package final class StreamCoordinator {
         case .input:
             guard let event = input else { return }
             let device = ObjectIdentifier(connection)
-            guard let rect = currentSourceRect() else {
+            let tabletOnly = tabletDevices.contains(device)
+            let inputRect: CGRect?
+            if tabletOnly {
+                let display = CGDisplayBounds(CGMainDisplayID())
+                inputRect = display.width > 0 && display.height > 0 ? display : nil
+            } else {
+                inputRect = currentSourceRect()
+            }
+            guard let rect = inputRect else {
                 // Nothing streams (between sources, or the stream stopped: the window closed under a
                 // drag): input has nowhere to land. The up of a key or a button the Mac has down still
                 // goes (DroppedInput), a button's where the pointer is (`.null`), so no modifier this
@@ -995,12 +1017,12 @@ package final class StreamCoordinator {
                 return
             }
             // A click, a key or text may close a view a gesture opened; a move or a scroll does not.
-            gestureChords.input(Self.gestureInput(event))
+            if !tabletOnly { gestureChords.input(Self.gestureInput(event)) }
             // A synthetic host acts on nothing: it posts no event (InputInjector.dryRun), so it
             // activates and raises nothing either.
-            if !synthetic { raiseIfInteracting(event) }
+            if !synthetic && !tabletOnly { raiseIfInteracting(event) }
             deliver(event, in: rect, from: device)
-            desktopInputMayActivate(event)
+            if !tabletOnly { desktopInputMayActivate(event) }
         case .gesture:
             // A three- or four-finger gesture (docs/trackpad-gestures-plan.md §7.4), which the Mac
             // turns into its own shortcut. At most `gesturesPerSecond` a second per connection: a
@@ -1689,7 +1711,8 @@ package final class StreamCoordinator {
         let needsFocus: Bool
         switch event {
         case .pointer(let action, _, _): guard action == .leftDown || action == .rightDown else { return }; needsFocus = true
-        case .scroll: needsFocus = false
+        case .button(let action): guard action == .leftDown || action == .rightDown else { return }; needsFocus = true
+        case .scroll, .relativePointer, .relativeScroll: needsFocus = false
         case .scrollGesture(let phase, _, _): guard phase == .began else { return }; needsFocus = false
         case .key(_, let down, _): guard down else { return }; needsFocus = true
         case .text: needsFocus = true
@@ -1903,6 +1926,7 @@ package final class StreamCoordinator {
         guard active == .desktop, menus.hasSubscribers, !menuFrontCheckPending else { return }
         switch event {
         case .pointer(let action, _, _): guard action == .leftDown || action == .rightDown else { return }
+        case .button(let action): guard action == .leftDown || action == .rightDown else { return }
         case .key(_, let down, _): guard down else { return }
         default: return
         }
@@ -2511,7 +2535,10 @@ package final class StreamCoordinator {
             case .leftDown, .rightDown: return .buttonDown
             case .leftUp, .rightUp: return .buttonUp
             }
-        case .scroll, .scrollGesture: return .scroll
+        case .button(let action):
+            return action == .leftDown || action == .rightDown ? .buttonDown : .buttonUp
+        case .relativePointer: return .pointerMove
+        case .scroll, .scrollGesture, .relativeScroll: return .scroll
         case .key(_, let down, _): return down ? .keyDown : .keyUp
         case .text: return .text
         }
@@ -2578,6 +2605,16 @@ package final class StreamCoordinator {
         if let shape = cursorShapes.current {
             server.send(StreamMessage(kind: .cursorShape, timestamp: now, isKeyframe: false, payload: shape), to: connection)
         }
+    }
+
+    /// The input-only session needs host identity for reconnects and pairing, but no window names,
+    /// thumbnails, app icons, cursor images or other screen content.
+    private func sendTabletSessionReady(to connection: NWConnection) {
+        let list = WindowList(macName: macName, windows: [], active: .none, launchID: launchID,
+                              hostVersion: hostVersion, protocol: SillProtocol.current)
+        server.sendTabletReady(StreamMessage(kind: .windowList, timestamp: Date().timeIntervalSince1970, isKeyframe: false,
+                                             payload: Wire.encode(list)), to: connection)
+        if let info = remote?.macInfoMessage() { server.send(info, to: connection) }
     }
 
     // MARK: Settings to devices

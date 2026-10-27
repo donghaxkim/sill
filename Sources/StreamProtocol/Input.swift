@@ -14,6 +14,15 @@ public enum PointerAction: String, Codable {
 public enum InputEvent: Codable, Hashable {
     case pointer(PointerAction, x: Double, y: Double)
 
+    /// A mouse button transition at the Mac's current pointer position. Trackpad clicks must not
+    /// reset the cursor to an arbitrary normalized screen coordinate.
+    case button(PointerAction)
+
+    /// Relative trackpad movement and scrolling. Deltas are fractions of the target display's
+    /// width and height, so the host can apply them without a streamed frame or client-side cursor.
+    case relativePointer(dx: Double, dy: Double)
+    case relativeScroll(dx: Double, dy: Double)
+
     /// Scroll with the cursor at (x, y). dx/dy are fractions of the frame the content should move,
     /// natural-scrolling sign: positive dy means the content moves down (finger dragged down, or up
     /// while the device's Reverse Scrolling turns its fingers' scrolls around: `ScrollDirection`).

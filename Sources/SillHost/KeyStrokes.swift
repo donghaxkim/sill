@@ -307,6 +307,8 @@ package enum DroppedInput {
         case .key(let usage, false, _): return keyDown(usage)
         case .pointer(.leftUp, _, _): return leftDown
         case .pointer(.rightUp, _, _): return rightDown
+        case .button(.leftUp): return leftDown
+        case .button(.rightUp): return rightDown
         default: return false
         }
     }

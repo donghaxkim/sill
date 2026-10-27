@@ -1178,3 +1178,326 @@ final class ScrollMomentum: NSObject {
         onStep?(CGPoint(x: velocity.x * dt, y: velocity.y * dt))
     }
 }
+
+// MARK: - Input-only tablet surface
+
+enum TabletControlMode: String, CaseIterable, Identifiable {
+    case tablet
+    case trackpad
+
+    var id: String { rawValue }
+    var title: String { self == .tablet ? "Tablet" : "Trackpad" }
+}
+
+struct TabletInputArea: Equatable {
+    var x: Double
+    var y: Double
+    var width: Double
+    var height: Double
+
+    static let full = TabletInputArea(x: 0, y: 0, width: 1, height: 1)
+}
+
+struct TabletInputSurface: UIViewRepresentable {
+    var mode: TabletControlMode
+    var area: TabletInputArea
+    var pencilContactClick: Bool
+    var reverseScroll: Bool
+    let send: (InputEvent) -> Void
+
+    func makeUIView(context: Context) -> TabletSurfaceView {
+        let view = TabletSurfaceView(frame: .zero)
+        view.apply(mode: mode, area: area, pencilContactClick: pencilContactClick,
+                   reverseScroll: reverseScroll, send: send)
+        return view
+    }
+
+    func updateUIView(_ uiView: TabletSurfaceView, context: Context) {
+        uiView.apply(mode: mode, area: area, pencilContactClick: pencilContactClick,
+                     reverseScroll: reverseScroll, send: send)
+    }
+}
+
+final class TabletSurfaceView: UIView {
+    private struct Contact {
+        var type: UITouch.TouchType
+        var start: CGPoint
+        var last: CGPoint
+        var moved = false
+        var insideArea: Bool
+        var clickEnabled: Bool
+        var buttonDown = false
+    }
+
+    private var mode: TabletControlMode = .tablet
+    private var area = TabletInputArea.full
+    private var pencilContactClick = true
+    private var reverseScroll = false
+    private var scrollFactor = 1.0
+    private var send: (InputEvent) -> Void = { _ in }
+    private var contacts: [ObjectIdentifier: Contact] = [:]
+    private var ignoredTouches = Set<ObjectIdentifier>()
+    private var secondFingerBaseline: CGPoint?
+    private var secondFingerMoved = false
+    private var hadMultipleTouches = false
+    private var contactCancelled = false
+    private var multiTouchClickEnabled = true
+    private var dragWork: DispatchWorkItem?
+    private var dragTouch: ObjectIdentifier?
+    private var dragButtonDown = false
+    private var hoverIsPencil = false
+    private var hover: UIHoverGestureRecognizer?
+
+    private static let trackpadTravel = 1.25
+    private static let scrollTravel = 0.5
+    private static let movementSlop: CGFloat = 3
+    private static let dragDelay: TimeInterval = 0.45
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isMultipleTouchEnabled = true
+
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
+        addGestureRecognizer(hover)
+        self.hover = hover
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func apply(mode: TabletControlMode, area: TabletInputArea, pencilContactClick: Bool, reverseScroll: Bool,
+               send: @escaping (InputEvent) -> Void) {
+        if self.mode != mode {
+            releaseHeldButtons()
+            ignoredTouches.formUnion(contacts.keys)
+            contacts.removeAll()
+            secondFingerBaseline = nil
+            hadMultipleTouches = false
+            contactCancelled = false
+            multiTouchClickEnabled = true
+        }
+        self.mode = mode
+        self.area = area
+        self.pencilContactClick = pencilContactClick
+        self.reverseScroll = reverseScroll
+        self.send = send
+    }
+
+    private var activeRect: CGRect {
+        CGRect(x: bounds.minX + bounds.width * area.x,
+               y: bounds.minY + bounds.height * area.y,
+               width: bounds.width * area.width,
+               height: bounds.height * area.height)
+    }
+
+    private func normalized(_ point: CGPoint, clamp: Bool) -> CGPoint? {
+        let rect = activeRect
+        guard rect.width > 0, rect.height > 0 else { return nil }
+        var x = (point.x - rect.minX) / rect.width
+        var y = (point.y - rect.minY) / rect.height
+        guard clamp || (x >= 0 && x <= 1 && y >= 0 && y <= 1) else { return nil }
+        x = min(max(x, 0), 1)
+        y = min(max(y, 0), 1)
+        return CGPoint(x: x, y: y)
+    }
+
+    private func moveAbsolute(to point: CGPoint, clamp: Bool) {
+        guard let position = normalized(point, clamp: clamp) else { return }
+        send(.pointer(.move, x: Double(position.x), y: Double(position.y)))
+    }
+
+    private func moveRelative(by delta: CGPoint) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        send(.relativePointer(dx: Double(delta.x / bounds.width) * Self.trackpadTravel,
+                              dy: Double(delta.y / bounds.height) * Self.trackpadTravel))
+    }
+
+    private func scrollRelative(by delta: CGPoint) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        send(.relativeScroll(dx: Double(delta.x / bounds.width) * Self.scrollTravel,
+                             dy: Double(delta.y / bounds.height) * Self.scrollTravel * scrollFactor))
+    }
+
+    private func beginContact(_ touch: UITouch) {
+        let id = ObjectIdentifier(touch)
+        let point = touch.location(in: self)
+        let inside = mode != .tablet || normalized(point, clamp: false) != nil
+        let clickEnabled = touch.type != .pencil || pencilContactClick
+        contacts[id] = Contact(type: touch.type, start: point, last: point,
+                                insideArea: inside, clickEnabled: clickEnabled)
+
+        if mode == .tablet {
+            guard inside else { return }
+            moveAbsolute(to: point, clamp: false)
+            guard clickEnabled, contacts.count == 1 else { return }
+            send(.button(.leftDown))
+            contacts[id]?.buttonDown = true
+            return
+        }
+
+        if contacts.count == 1 {
+            dragTouch = id
+            multiTouchClickEnabled = clickEnabled
+            if clickEnabled { scheduleDrag(for: id) }
+        } else if contacts.count == 2 {
+            cancelPendingDrag()
+            if dragButtonDown { send(.button(.leftUp)); dragButtonDown = false }
+            hadMultipleTouches = true
+            multiTouchClickEnabled = multiTouchClickEnabled && clickEnabled
+            secondFingerMoved = false
+            scrollFactor = ScrollDirection.factor(.pad, reversed: reverseScroll)
+            secondFingerBaseline = centroid()
+        } else {
+            cancelPendingDrag()
+            hadMultipleTouches = true
+            multiTouchClickEnabled = multiTouchClickEnabled && clickEnabled
+            secondFingerBaseline = nil
+        }
+    }
+
+    private func updateContact(_ touch: UITouch) {
+        let id = ObjectIdentifier(touch)
+        guard var contact = contacts[id] else { return }
+        let point = touch.location(in: self)
+        let delta = CGPoint(x: point.x - contact.last.x, y: point.y - contact.last.y)
+        if hypot(point.x - contact.start.x, point.y - contact.start.y) > Self.movementSlop {
+            contact.moved = true
+            cancelPendingDrag()
+        }
+        contact.last = point
+        contacts[id] = contact
+
+        if mode == .tablet {
+            guard contact.insideArea else { return }
+            moveAbsolute(to: point, clamp: true)
+            return
+        }
+
+        if contacts.count == 1, !hadMultipleTouches {
+            moveRelative(by: delta)
+        } else if contacts.count == 2, let previous = secondFingerBaseline, let current = centroid() {
+            let scrollDelta = CGPoint(x: current.x - previous.x, y: current.y - previous.y)
+            secondFingerBaseline = current
+            if hypot(scrollDelta.x, scrollDelta.y) > 0.01 {
+                secondFingerMoved = true
+                scrollRelative(by: scrollDelta)
+            }
+        } else if contacts.count == 1, hadMultipleTouches, hypot(delta.x, delta.y) > 0.01 {
+            secondFingerMoved = true
+        }
+    }
+
+    private func endContact(_ touch: UITouch, cancelled: Bool) {
+        let id = ObjectIdentifier(touch)
+        if ignoredTouches.remove(id) != nil { return }
+        guard let contact = contacts.removeValue(forKey: id) else { return }
+        contactCancelled = contactCancelled || cancelled
+        cancelPendingDrag()
+
+        if mode == .tablet {
+            if contact.buttonDown { send(.button(.leftUp)) }
+            if contacts.isEmpty {
+                hadMultipleTouches = false
+                contactCancelled = false
+            }
+            return
+        }
+
+        let hadDragButton = dragButtonDown
+        if dragTouch == id {
+            dragTouch = nil
+            if dragButtonDown {
+                send(.button(.leftUp))
+                dragButtonDown = false
+            }
+        }
+        if contacts.isEmpty, !contactCancelled {
+            if hadMultipleTouches {
+                if multiTouchClickEnabled, !secondFingerMoved {
+                    send(.button(.rightDown))
+                    send(.button(.rightUp))
+                }
+            } else if contact.clickEnabled, !hadDragButton, !contact.moved {
+                send(.button(.leftDown))
+                send(.button(.leftUp))
+            }
+        }
+
+        if contacts.count < 2 { secondFingerBaseline = nil }
+        if contacts.isEmpty {
+            hadMultipleTouches = false
+            secondFingerMoved = false
+            contactCancelled = false
+            multiTouchClickEnabled = true
+        }
+    }
+
+    private func centroid() -> CGPoint? {
+        guard !contacts.isEmpty else { return nil }
+        let points = contacts.values.map(\.last)
+        return CGPoint(x: points.map(\.x).reduce(0, +) / CGFloat(points.count),
+                       y: points.map(\.y).reduce(0, +) / CGFloat(points.count))
+    }
+
+    private func scheduleDrag(for id: ObjectIdentifier) {
+        cancelPendingDrag()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.mode == .trackpad, self.contacts.count == 1,
+                  let contact = self.contacts[id], contact.clickEnabled, !contact.moved else { return }
+            self.dragButtonDown = true
+            self.send(.button(.leftDown))
+        }
+        dragWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.dragDelay, execute: work)
+    }
+
+    private func cancelPendingDrag() {
+        dragWork?.cancel()
+        dragWork = nil
+    }
+
+    private func releaseHeldButtons() {
+        cancelPendingDrag()
+        if dragButtonDown { send(.button(.leftUp)); dragButtonDown = false }
+        for contact in contacts.values where contact.buttonDown { send(.button(.leftUp)) }
+    }
+
+    @objc private func handleHover(_ gesture: UIHoverGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            hoverIsPencil = false
+        case .changed:
+            if gesture.zOffset > 0 || gesture.altitudeAngle > 0 { hoverIsPencil = true }
+            if hoverIsPencil, mode == .tablet {
+                moveAbsolute(to: gesture.location(in: self), clamp: true)
+            }
+        default:
+            hoverIsPencil = false
+        }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches where touch.type == .direct || touch.type == .pencil {
+            beginContact(touch)
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches where touch.type == .direct || touch.type == .pencil {
+            updateContact(touch)
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches where touch.type == .direct || touch.type == .pencil {
+            endContact(touch, cancelled: false)
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches where touch.type == .direct || touch.type == .pencil {
+            endContact(touch, cancelled: true)
+        }
+    }
+}

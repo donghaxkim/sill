@@ -34,7 +34,11 @@ struct ContentView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if client.connected {
-                StreamScreen(client: client)
+                if client.tabletInputOnly {
+                    TabletSessionScreen(client: client)
+                } else {
+                    StreamScreen(client: client)
+                }
             } else {
                 ConnectScreen(client: client)
             }
@@ -72,6 +76,269 @@ struct ContentView: View {
         }
     }
     #endif
+}
+
+private struct TabletSessionScreen: View {
+    @ObservedObject var client: StreamClient
+    @AppStorage("Sill.tabletInput.mode") private var modeRaw = TabletControlMode.tablet.rawValue
+    @AppStorage("Sill.tabletInput.pencilContactClick") private var pencilContactClick = true
+    @AppStorage(StreamClient.reverseScrollKey) private var reverseScroll = false
+    @AppStorage("Sill.tabletInput.area.x") private var areaX = 0.0
+    @AppStorage("Sill.tabletInput.area.y") private var areaY = 0.0
+    @AppStorage("Sill.tabletInput.area.width") private var areaWidth = 1.0
+    @AppStorage("Sill.tabletInput.area.height") private var areaHeight = 1.0
+    @State private var settingsOpen = false
+
+    private var mode: TabletControlMode { TabletControlMode(rawValue: modeRaw) ?? .tablet }
+    private var area: TabletInputArea {
+        let width = min(max(areaWidth, 0.1), 1)
+        let height = min(max(areaHeight, 0.1), 1)
+        return TabletInputArea(x: min(max(areaX, 0), 1 - width),
+                               y: min(max(areaY, 0), 1 - height),
+                               width: width, height: height)
+    }
+    private var routeLabel: String {
+        if let remote = client.remoteRoute { return remote.phrase }
+        return client.route?.word ?? (client.connectedDirectly ? "Direct" : "Connected")
+    }
+
+    var body: some View {
+        ZStack {
+            Palette.trackpad.ignoresSafeArea()
+            TabletInputSurface(mode: mode, area: area, pencilContactClick: pencilContactClick,
+                               reverseScroll: reverseScroll,
+                               send: client.sendInput)
+                .ignoresSafeArea()
+                .overlay {
+                    TabletAreaOutline(area: area, visible: mode == .tablet && area != .full)
+                        .ignoresSafeArea()
+                }
+                .allowsHitTesting(!settingsOpen)
+
+            VStack(spacing: 0) {
+                header
+                Spacer(minLength: 16)
+                footer
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 10)
+        }
+        .preferredColorScheme(.dark)
+        .statusBarHidden()
+        .sheet(isPresented: $settingsOpen) {
+            TabletInputSettings(pencilContactClick: $pencilContactClick,
+                                reverseScroll: $reverseScroll,
+                                areaX: $areaX, areaY: $areaY,
+                                areaWidth: $areaWidth, areaHeight: $areaHeight)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(client.macName.isEmpty ? "Mac input" : client.macName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                    Text(routeLabel).font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Palette.muted)
+                    Text("Input only").font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Palette.muted)
+                }
+            }
+            Spacer(minLength: 4)
+            Button { settingsOpen = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Input settings")
+            .buttonStyle(TabletBarButtonStyle())
+            Button { client.disconnect() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 42, height: 42)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Disconnect")
+            .buttonStyle(TabletBarButtonStyle())
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 6)
+        .frame(minHeight: 56)
+        .background(Palette.bar.opacity(0.94), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.07)))
+    }
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            Picker("Input mode", selection: $modeRaw) {
+                ForEach(TabletControlMode.allCases) { mode in
+                    Text(mode.title).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+
+            Text(mode == .tablet
+                 ? "Touch or hover the Pencil to move. Pencil contact clicks can be turned off in settings."
+                 : "Drag to move. Tap to click, hold to drag, and use two fingers to scroll.")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(maxWidth: 380)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 13)
+        .background(Palette.bar.opacity(0.94), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.white.opacity(0.07)))
+    }
+}
+
+private struct TabletBarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(configuration.isPressed ? Palette.accent : Palette.text)
+            .background(configuration.isPressed ? Palette.controlOpen : Palette.control,
+                        in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+}
+
+private struct TabletAreaOutline: View {
+    let area: TabletInputArea
+    let visible: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            if visible {
+                let rect = CGRect(x: geometry.size.width * area.x,
+                                  y: geometry.size.height * area.y,
+                                  width: geometry.size.width * area.width,
+                                  height: geometry.size.height * area.height)
+                Path(roundedRect: rect, cornerSize: CGSize(width: 18, height: 18))
+                    .stroke(Palette.accent.opacity(0.62), style: StrokeStyle(lineWidth: 1.5, dash: [7, 6]))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct TabletInputSettings: View {
+    @Binding var pencilContactClick: Bool
+    @Binding var reverseScroll: Bool
+    @Binding var areaX: Double
+    @Binding var areaY: Double
+    @Binding var areaWidth: Double
+    @Binding var areaHeight: Double
+
+    private var area: TabletInputArea {
+        let width = min(max(areaWidth, 0.1), 1)
+        let height = min(max(areaHeight, 0.1), 1)
+        return TabletInputArea(x: min(max(areaX, 0), 1 - width),
+                               y: min(max(areaY, 0), 1 - height),
+                               width: width, height: height)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Pencil") {
+                    Toggle("Click on contact", isOn: $pencilContactClick)
+                    Text("Turn this off to move the Mac pointer with the Pencil without clicking or dragging.")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.muted)
+                }
+
+                Section("Trackpad") {
+                    Toggle("Reverse scrolling", isOn: $reverseScroll)
+                }
+
+                Section {
+                    TabletAreaPreview(area: area)
+                        .frame(height: 94)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
+                    areaSlider("Width", value: $areaWidth, range: 0.1...1)
+                    areaSlider("Height", value: $areaHeight, range: 0.1...1)
+                    areaSlider("Left edge", value: $areaX, range: 0...max(0, 1 - min(max(areaWidth, 0.1), 1)))
+                    areaSlider("Top edge", value: $areaY, range: 0...max(0, 1 - min(max(areaHeight, 0.1), 1)))
+                    Button("Use whole iPad screen") {
+                        areaX = 0
+                        areaY = 0
+                        areaWidth = 1
+                        areaHeight = 1
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                } header: {
+                    Text("Active tablet area")
+                } footer: {
+                    Text("The selected area maps across the full Mac display. This also applies outside osu!.")
+                }
+            }
+            .onChange(of: areaWidth) { _, width in areaX = min(max(0, areaX), 1 - min(max(width, 0.1), 1)) }
+            .onChange(of: areaHeight) { _, height in areaY = min(max(0, areaY), 1 - min(max(height, 0.1), 1)) }
+            .onAppear {
+                areaWidth = min(max(areaWidth, 0.1), 1)
+                areaHeight = min(max(areaHeight, 0.1), 1)
+                areaX = min(max(areaX, 0), 1 - areaWidth)
+                areaY = min(max(areaY, 0), 1 - areaHeight)
+            }
+            .navigationTitle("Input settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .scrollContentBackground(.hidden)
+            .background(Palette.panel)
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func areaSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(Int((value.wrappedValue * 100).rounded()))%")
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.muted)
+            }
+            Slider(value: value, in: range, step: 0.01)
+                .tint(Palette.accent)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct TabletAreaPreview: View {
+    let area: TabletInputArea
+
+    var body: some View {
+        GeometryReader { geometry in
+            let rect = CGRect(x: geometry.size.width * area.x,
+                              y: geometry.size.height * area.y,
+                              width: geometry.size.width * area.width,
+                              height: geometry.size.height * area.height)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Palette.trackpad)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Palette.accent.opacity(0.14))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Palette.accent, lineWidth: 1.5))
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                Text("iPad surface")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Palette.muted)
+                    .padding(7)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
 }
 
 #if DEBUG
