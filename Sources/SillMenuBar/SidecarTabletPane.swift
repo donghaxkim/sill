@@ -126,7 +126,7 @@ struct SidecarTabletPane: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
-                    Text("Pointer appears on the selected Mac display. The iPad stays cursor-free while mapping.")
+                    Text("The Mac pointer stays at the mapped position when you lift the Pencil.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 

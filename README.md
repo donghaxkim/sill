@@ -24,6 +24,9 @@ No HitPad app is required on the iPad.
 3. Drag the highlighted area to move it or a corner handle to resize it.
 4. Use the percentage fields for precise values, then choose Save to keep the area for next time.
 
+In Tablet mode, the outlined area on the iPad maps exactly to the selected Mac display.
+The pointer stays at its last position when you lift the Pencil and jumps to the new absolute position on the next contact.
+
 ## Build from source
 
 Build and open the Mac app with:

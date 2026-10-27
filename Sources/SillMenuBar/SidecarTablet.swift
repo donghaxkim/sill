@@ -3,50 +3,6 @@ import CoreGraphics
 import Darwin
 import Observation
 
-enum TabletMappingMode: String, CaseIterable, Identifiable {
-    case absolute
-    case relative
-
-    var id: String { rawValue }
-    var title: String { self == .absolute ? "Tablet" : "Trackpad" }
-}
-
-struct TabletActiveArea: Codable, Equatable {
-    var x = 0.0
-    var y = 0.0
-    var width = 1.0
-    var height = 1.0
-
-    static let full = TabletActiveArea()
-    var isFull: Bool { self == .full }
-
-    func normalized(_ point: CGPoint) -> CGPoint? {
-        guard width > 0, height > 0 else { return nil }
-        let px = (point.x - x) / width
-        let py = (point.y - y) / height
-        guard (0...1).contains(px), (0...1).contains(py) else { return nil }
-        return CGPoint(x: px, y: py)
-    }
-
-    func bounded() -> TabletActiveArea {
-        var result = self
-        result.width = min(max(width, 0.1), 1)
-        result.height = min(max(height, 0.1), 1)
-        result.x = min(max(x, 0), 1 - result.width)
-        result.y = min(max(y, 0), 1 - result.height)
-        return result
-    }
-
-    func roundedToTenthPercent() -> TabletActiveArea {
-        var result = bounded()
-        result.x = (result.x * 1_000).rounded() / 1_000
-        result.y = (result.y * 1_000).rounded() / 1_000
-        result.width = (result.width * 1_000).rounded() / 1_000
-        result.height = (result.height * 1_000).rounded() / 1_000
-        return result.bounded()
-    }
-}
-
 struct SidecarDevice: Identifiable, Equatable {
     let name: String
     var id: String { name }
@@ -188,7 +144,6 @@ final class SidecarTabletModel {
     private var surfaceWindow: TabletSurfaceWindowController?
     private var screenObserver: NSObjectProtocol?
     private var terminationObserver: NSObjectProtocol?
-    @ObservationIgnored private var hiddenCursorDisplayID: CGDirectDisplayID?
     private var ownsSidecarConnection = false
     private var sidecarSessionDeviceName: String?
     private(set) var isDisconnectingSidecar = false
@@ -303,7 +258,7 @@ final class SidecarTabletModel {
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.restoreSidecarCursor() }
+            MainActor.assumeIsolated { self?.surfaceWindow?.close() }
         }
         guard connectAtLaunch else { return }
         if selectedDeviceName.isEmpty, devices.count == 1 { selectedDeviceName = devices[0].name }
@@ -354,7 +309,6 @@ final class SidecarTabletModel {
         let shouldDisconnectSidecar = ownsSidecarConnection
         surfaceWindow?.close()
         surfaceWindow = nil
-        restoreSidecarCursor()
         connectedDeviceName = nil
         guard shouldDisconnectSidecar else {
             sidecarSessionDeviceName = nil
@@ -445,14 +399,13 @@ final class SidecarTabletModel {
                 return
             }
             surfaceWindow?.close()
-            surfaceWindow = TabletSurfaceWindowController(screen: screen, model: self)
+            surfaceWindow = try TabletSurfaceWindowController(screen: screen, model: self)
             sidecarSessionDeviceName = name
             connectedDeviceName = name
             selectedDeviceName = name
             problem = nil
             clearDisplayRecovery()
             refreshTargetDisplays()
-            hideCursorOnSidecarDisplay(id)
         } catch {
             let requiresDisplayRecovery = (error as? SidecarError)?.requiresExtendedDisplay == true
                 || bridge.sidecarDisplayID().map({ CGDisplayIsInMirrorSet($0) != 0 }) == true
@@ -536,26 +489,6 @@ final class SidecarTabletModel {
         else { defaults.removeObject(forKey: Key.targetDisplay) }
     }
 
-    private func hideCursorOnSidecarDisplay(_ id: CGDirectDisplayID) {
-        guard hiddenCursorDisplayID != id else { return }
-        restoreSidecarCursor()
-        guard hiddenCursorDisplayID == nil else { return }
-        guard CGDisplayHideCursor(id) == .success else {
-            problem = "macOS couldn’t hide the cursor on the iPad display."
-            return
-        }
-        hiddenCursorDisplayID = id
-    }
-
-    private func restoreSidecarCursor() {
-        guard let id = hiddenCursorDisplayID else { return }
-        guard CGDisplayShowCursor(id) == .success else {
-            problem = "macOS couldn’t restore the cursor on the iPad display."
-            return
-        }
-        hiddenCursorDisplayID = nil
-    }
-
     private func waitForSidecarDisplayID() async -> CGDirectDisplayID? {
         for _ in 0..<50 {
             if let id = bridge.sidecarDisplayID() { return id }
@@ -581,7 +514,6 @@ final class SidecarTabletModel {
     private func sidecarDisplaysChanged() {
         refreshTargetDisplays()
         guard let connectedDeviceName else {
-            restoreSidecarCursor()
             if needsExtendedDisplayRecovery,
                let id = bridge.sidecarDisplayID(),
                CGDisplayIsInMirrorSet(id) == 0,
@@ -592,7 +524,6 @@ final class SidecarTabletModel {
             return
         }
         guard let id = bridge.sidecarDisplayID() else {
-            restoreSidecarCursor()
             surfaceWindow?.close()
             surfaceWindow = nil
             self.connectedDeviceName = nil
@@ -602,7 +533,6 @@ final class SidecarTabletModel {
             return
         }
         if CGDisplayIsInMirrorSet(id) != 0 {
-            restoreSidecarCursor()
             surfaceWindow?.close()
             surfaceWindow = nil
             self.connectedDeviceName = nil
@@ -610,7 +540,6 @@ final class SidecarTabletModel {
             return
         }
         guard let screen = screen(for: id) else {
-            restoreSidecarCursor()
             surfaceWindow?.close()
             surfaceWindow = nil
             self.connectedDeviceName = nil
@@ -619,7 +548,6 @@ final class SidecarTabletModel {
         }
         surfaceWindow?.move(to: screen)
         self.connectedDeviceName = connectedDeviceName
-        hideCursorOnSidecarDisplay(id)
     }
 
     private func updateSurface() {
@@ -632,7 +560,7 @@ final class SidecarTabletModel {
 private final class TabletSurfaceWindowController: NSWindowController {
     private let surface: SidecarTabletInputView
 
-    init(screen: NSScreen, model: SidecarTabletModel) {
+    init(screen: NSScreen, model: SidecarTabletModel) throws {
         let window = TabletSurfaceWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false, screen: screen)
         surface = SidecarTabletInputView(frame: NSRect(origin: .zero, size: screen.frame.size), model: model)
         window.contentView = surface
@@ -643,6 +571,10 @@ private final class TabletSurfaceWindowController: NSWindowController {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.setFrame(screen.frame, display: true)
         super.init(window: window)
+        guard surface.startPencilCapture(on: screen) else {
+            window.close()
+            throw SidecarError("HitPad couldn’t capture Pencil input. Enable the current HitPad app in Accessibility, reopen HitPad, and connect again.")
+        }
         window.makeKeyAndOrderFront(nil)
     }
 
@@ -655,9 +587,17 @@ private final class TabletSurfaceWindowController: NSWindowController {
                       fingerInputEnabled: fingerInputEnabled, touchClick: touchClick)
     }
 
+    override func close() {
+        surface.stopPencilCapture()
+        surface.endInput()
+        super.close()
+    }
+
     func move(to screen: NSScreen) {
+        surface.endInput()
         window?.setFrame(screen.frame, display: true)
         surface.frame = NSRect(origin: .zero, size: screen.frame.size)
+        surface.updatePencilDisplay(screen)
     }
 }
 
@@ -667,21 +607,21 @@ private final class TabletSurfaceWindow: NSWindow {
 }
 
 @MainActor
-private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate {
+final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate {
     private weak var model: SidecarTabletModel?
-    private let router = SidecarPointerRouter()
+    private let router: SidecarPointerRouter
     private var mode: TabletMappingMode = .absolute
     private var activeArea = TabletActiveArea.full
     private var pencilClick = true
     private var fingerInputEnabled = false
     private var touchClick = true
     private var lastTouchPoint: CGPoint?
-    private var lastPointerPoint: CGPoint?
-    private var pencilButtonIsDown = false
-    private var rightButtonIsDown = false
-    private var tracking: NSTrackingArea?
+    private let pencilMapper = SidecarPencilMapper()
+    private var pencilEventTap: SidecarPencilEventTap?
+    private var pencilDisplayID: CGDirectDisplayID?
 
-    init(frame: NSRect, model: SidecarTabletModel) {
+    init(frame: NSRect, model: SidecarTabletModel, router: SidecarPointerRouter? = nil) {
+        self.router = router ?? SidecarPointerRouter()
         self.model = model
         super.init(frame: frame)
         wantsLayer = true
@@ -704,20 +644,12 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     override var acceptsFirstResponder: Bool { true }
     override func viewDidMoveToWindow() { window?.acceptsMouseMovedEvents = true }
 
-    override func updateTrackingAreas() {
-        if let tracking { removeTrackingArea(tracking) }
-        let area = NSTrackingArea(rect: bounds, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil)
-        addTrackingArea(area)
-        tracking = area
-        super.updateTrackingAreas()
-    }
-
     func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool,
                fingerInputEnabled: Bool, touchClick: Bool) {
         let nextArea = activeArea.bounded()
-        if self.mode != mode || self.activeArea != nextArea {
-            lastPointerPoint = nil
-            lastTouchPoint = nil
+        if self.mode != mode || self.activeArea != nextArea || self.pencilClick != pencilClick
+            || self.fingerInputEnabled != fingerInputEnabled || self.touchClick != touchClick {
+            endInput()
         }
         self.mode = mode
         self.activeArea = nextArea
@@ -729,7 +661,7 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let tabletRect = bounds.insetBy(dx: 16, dy: 16)
+        let tabletRect = geometry.tabletRect
         let tabletPath = NSBezierPath(roundedRect: tabletRect, xRadius: 18, yRadius: 18)
         NSColor(calibratedWhite: 0.075, alpha: 1).setFill()
         tabletPath.fill()
@@ -737,19 +669,16 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         tabletPath.lineWidth = 1
         tabletPath.stroke()
 
-        let activeRect = NSRect(x: tabletRect.minX + tabletRect.width * activeArea.x,
-                                y: tabletRect.minY + tabletRect.height * (1 - activeArea.y - activeArea.height),
-                                width: tabletRect.width * activeArea.width,
-                                height: tabletRect.height * activeArea.height)
+        let activeRect = geometry.activeRect
         if !activeArea.isFull {
             let inactivePath = NSBezierPath(rect: tabletRect)
-            inactivePath.append(NSBezierPath(roundedRect: activeRect, xRadius: 10, yRadius: 10))
+            inactivePath.append(NSBezierPath(rect: activeRect))
             inactivePath.windingRule = .evenOdd
             NSColor.black.withAlphaComponent(0.62).setFill()
             inactivePath.fill()
         }
 
-        let activePath = NSBezierPath(roundedRect: activeRect.insetBy(dx: 1, dy: 1), xRadius: 10, yRadius: 10)
+        let activePath = NSBezierPath(rect: activeRect)
         NSColor.controlAccentColor.withAlphaComponent(0.10).setFill()
         activePath.fill()
         NSColor.controlAccentColor.withAlphaComponent(0.88).setStroke()
@@ -757,28 +686,36 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         activePath.stroke()
     }
 
-    override func mouseMoved(with event: NSEvent) { route(event.locationInWindow) }
-    override func mouseDown(with event: NSEvent) {
-        guard route(event.locationInWindow) else { return }
-        guard pencilClick else { return }
-        router.click(down: true)
-        pencilButtonIsDown = true
+    var geometry: TabletSurfaceGeometry { TabletSurfaceGeometry(bounds: bounds, activeArea: activeArea) }
+
+    func updatePencilDisplay(_ screen: NSScreen) {
+        pencilDisplayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
-    override func mouseUp(with event: NSEvent) {
-        guard pencilButtonIsDown else { return }
-        router.click(down: false)
-        pencilButtonIsDown = false
+
+    func startPencilCapture(on screen: NSScreen) -> Bool {
+        updatePencilDisplay(screen)
+        guard pencilDisplayID != nil else { return false }
+        let tap = SidecarPencilEventTap(transform: { [weak self] event in
+            guard let self, let sourceID = self.pencilDisplayID else { return event }
+            return self.pencilMapper.transform(event, sourceBounds: CGDisplayBounds(sourceID),
+                                               geometry: self.geometry, targetBounds: CGDisplayBounds(self.targetDisplayID),
+                                               mode: self.mode, clicks: self.pencilClick,
+                                               currentLocation: { CGEvent(source: nil)?.location ?? .zero })
+        }, interrupted: { [weak self] in self?.endInput() })
+        guard tap.start() else { return false }
+        pencilEventTap = tap
+        return true
     }
-    override func mouseDragged(with event: NSEvent) { route(event.locationInWindow) }
-    override func rightMouseDown(with event: NSEvent) {
-        guard route(event.locationInWindow) else { return }
-        router.rightClick(down: true)
-        rightButtonIsDown = true
+
+    func stopPencilCapture() {
+        pencilEventTap?.stop()
+        pencilEventTap = nil
+        pencilDisplayID = nil
     }
-    override func rightMouseUp(with event: NSEvent) {
-        guard rightButtonIsDown else { return }
-        router.rightClick(down: false)
-        rightButtonIsDown = false
+
+    func endInput() {
+        for event in pencilMapper.endInput() { event.post(tap: .cghidEventTap) }
+        lastTouchPoint = nil
     }
 
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldReceive touch: NSTouch) -> Bool {
@@ -801,7 +738,6 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         let point = recognizer.location(in: self)
         switch recognizer.state {
         case .began:
-            lastPointerPoint = nil
             if isInsideActiveArea(point) {
                 lastTouchPoint = point
                 if mode == .absolute { routeLocal(point) }
@@ -824,7 +760,6 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
             lastTouchPoint = point
         case .ended, .cancelled, .failed:
             lastTouchPoint = nil
-            lastPointerPoint = nil
         default: break
         }
     }
@@ -835,10 +770,6 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         guard isInsideActiveArea(point) else { return }
         if mode == .absolute {
             routeLocal(point)
-        } else {
-            // A trackpad tap clicks at the current pointer location; it should not jump to
-            // the tap position or reuse a stale Pencil position as the next movement origin.
-            lastPointerPoint = nil
         }
         guard touchClick else { return }
         router.click(down: true)
@@ -846,43 +777,17 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     }
 
     @discardableResult
-    private func route(_ windowPoint: NSPoint) -> Bool {
-        routeLocal(convert(windowPoint, from: nil))
-    }
-
-    @discardableResult
     private func routeLocal(_ local: NSPoint) -> Bool {
-        let u = local.x / max(bounds.width, 1)
-        let v = 1 - local.y / max(bounds.height, 1)
-        guard let normalized = activeArea.normalized(CGPoint(x: u, y: v)) else {
-            lastPointerPoint = nil
-            return false
-        }
-        if mode == .absolute {
-            router.moveAbsolute(normalized: normalized, displayID: targetDisplayID)
-            lastPointerPoint = nil
-        } else {
-            if let lastPointerPoint {
-                router.moveRelative(dx: local.x - lastPointerPoint.x,
-                                    dy: lastPointerPoint.y - local.y,
-                                    surfaceSize: trackpadSurfaceSize,
-                                    displayID: targetDisplayID)
-            }
-            lastPointerPoint = local
-        }
+        guard let normalized = geometry.normalized(local) else { return false }
+        router.moveAbsolute(normalized: normalized, displayID: targetDisplayID)
         return true
     }
 
     private func isInsideActiveArea(_ local: CGPoint) -> Bool {
-        let u = local.x / max(bounds.width, 1)
-        let v = 1 - local.y / max(bounds.height, 1)
-        return activeArea.normalized(CGPoint(x: u, y: v)) != nil
+        geometry.normalized(local) != nil
     }
 
-    private var trackpadSurfaceSize: CGSize {
-        CGSize(width: bounds.width * activeArea.width,
-               height: bounds.height * activeArea.height)
-    }
+    private var trackpadSurfaceSize: CGSize { geometry.activeRect.size }
 
     private var targetDisplayID: CGDirectDisplayID {
         model?.targetDisplayID ?? CGMainDisplayID()
@@ -890,40 +795,65 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
 }
 
 @MainActor
-private final class SidecarPointerRouter {
+final class SidecarPointerRouter {
     private let source = CGEventSource(stateID: .hidSystemState)
     private var lastLocation: CGPoint?
+    private var leftIsDown = false
+    private var rightIsDown = false
+    private let displayBounds: (CGDirectDisplayID) -> CGRect
+    private let readLocation: () -> CGPoint
+    private let canPost: () -> Bool
+    private let send: (CGEvent) -> Void
+
+    init(displayBounds: @escaping (CGDirectDisplayID) -> CGRect = { CGDisplayBounds($0) },
+         readLocation: @escaping () -> CGPoint = { CGEvent(source: nil)?.location ?? .zero },
+         canPost: @escaping () -> Bool = { CGPreflightPostEventAccess() },
+         send: @escaping (CGEvent) -> Void = { $0.post(tap: .cghidEventTap) }) {
+        self.displayBounds = displayBounds
+        self.readLocation = readLocation
+        self.canPost = canPost
+        self.send = send
+    }
+
+    private var motionType: CGEventType {
+        leftIsDown ? .leftMouseDragged : rightIsDown ? .rightMouseDragged : .mouseMoved
+    }
 
     func moveAbsolute(normalized: CGPoint, displayID: CGDirectDisplayID) {
-        let bounds = CGDisplayBounds(displayID)
-        let point = CGPoint(x: bounds.minX + normalized.x * max(bounds.width - 1, 0),
-                            y: bounds.minY + normalized.y * max(bounds.height - 1, 0))
-        post(.mouseMoved, point: point, button: .left)
+        let bounds = displayBounds(displayID)
+        let point = TabletSurfaceGeometry.destination(normalized, in: bounds)
+        post(motionType, point: point, button: rightIsDown && !leftIsDown ? .right : .left)
     }
 
     func moveRelative(dx: CGFloat, dy: CGFloat, surfaceSize: CGSize, displayID: CGDirectDisplayID) {
         guard surfaceSize.width > 0, surfaceSize.height > 0 else { return }
-        let bounds = CGDisplayBounds(displayID)
+        let bounds = displayBounds(displayID)
         guard bounds.width > 0, bounds.height > 0 else { return }
         let cursor = current()
         let origin = bounds.contains(cursor) ? cursor : CGPoint(x: bounds.midX, y: bounds.midY)
         let point = CGPoint(x: min(max(origin.x + dx / surfaceSize.width * bounds.width * 1.25, bounds.minX), bounds.maxX - 1),
                             y: min(max(origin.y + dy / surfaceSize.height * bounds.height * 1.25, bounds.minY), bounds.maxY - 1))
-        post(.mouseMoved, point: point, button: .left)
+        post(motionType, point: point, button: rightIsDown && !leftIsDown ? .right : .left)
     }
 
-    func click(down: Bool) { post(down ? .leftMouseDown : .leftMouseUp, point: current(), button: .left) }
-    func rightClick(down: Bool) { post(down ? .rightMouseDown : .rightMouseUp, point: current(), button: .right) }
+    func click(down: Bool) {
+        if post(down ? .leftMouseDown : .leftMouseUp, point: current(), button: .left) { leftIsDown = down }
+    }
+    func rightClick(down: Bool) {
+        if post(down ? .rightMouseDown : .rightMouseUp, point: current(), button: .right) { rightIsDown = down }
+    }
 
-    private func current() -> CGPoint { lastLocation ?? CGEvent(source: nil)?.location ?? .zero }
+    private func current() -> CGPoint { lastLocation ?? readLocation() }
 
-    private func post(_ type: CGEventType, point: CGPoint, button: CGMouseButton) {
+    @discardableResult
+    private func post(_ type: CGEventType, point: CGPoint, button: CGMouseButton) -> Bool {
         // Cursor warping alone can make motion look successful while the event server rejects
         // clicks. Check the actual event-posting grant before either action, including mid-session.
-        guard CGPreflightPostEventAccess() else { return }
+        guard canPost() else { return false }
         guard let event = CGEvent(mouseEventSource: source, mouseType: type,
-                                  mouseCursorPosition: point, mouseButton: button) else { return }
+                                  mouseCursorPosition: point, mouseButton: button) else { return false }
         lastLocation = point
-        event.post(tap: .cghidEventTap)
+        send(event)
+        return true
     }
 }
