@@ -69,19 +69,23 @@ struct SidecarTabletPane: View {
             } footer: {
                 Footnote(tablet.mode == .absolute
                          ? "Tablet mode maps the active iPad area to the Mac’s main display."
-                         : "Trackpad mode moves the Mac pointer relative to Pencil or finger movement.")
+                         : tablet.fingerInputEnabled
+                            ? "Trackpad mode moves the Mac pointer relative to Pencil or finger movement."
+                            : "Trackpad mode moves relative to Pencil movement. Turn on Finger input to use your finger too.")
             }
 
             Section {
                 Toggle("Pencil contact clicks", isOn: $tablet.pencilContactClick)
-                Toggle("Finger tap clicks", isOn: $tablet.touchClick)
+                Toggle("Finger input", isOn: $tablet.fingerInputEnabled)
                     .disabled(!tablet.supportsSidecarTouch)
+                Toggle("Finger tap clicks", isOn: $tablet.touchClick)
+                    .disabled(!tablet.supportsSidecarTouch || !tablet.fingerInputEnabled)
             } header: {
                 Text("Input")
             } footer: {
                 Footnote(tablet.supportsSidecarTouch
-                         ? "Turn off Pencil contact clicks to move the pointer with Pencil without pressing the Mac mouse button. Finger input requires a compatible iPadOS version."
-                         : "Turn off Pencil contact clicks to move the pointer with Pencil without pressing the Mac mouse button. Finger input through Sidecar requires macOS 27 and iPadOS 27.")
+                         ? "Turn off Pencil contact clicks to move the pointer with Pencil without pressing the Mac mouse button. Turn off Finger input to ignore all finger touches."
+                         : "Turn off Pencil contact clicks to move the pointer with Pencil without pressing the Mac mouse button. Finger input requires macOS 27 and iPadOS 27.")
             }
 
             Section {

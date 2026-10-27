@@ -131,6 +131,7 @@ final class SidecarTabletModel {
         static let selectedDevice = "Sill.tablet.sidecarDevice"
         static let mode = "Sill.tablet.mappingMode"
         static let pencilClick = "Sill.tablet.pencilClick"
+        static let fingerInput = "Sill.tablet.fingerInput"
         static let touchClick = "Sill.tablet.touchClick"
         static let activeArea = "Sill.tablet.activeArea"
         static let connectAtLaunch = "Sill.tablet.connectAtLaunch"
@@ -158,6 +159,12 @@ final class SidecarTabletModel {
     var pencilContactClick: Bool {
         didSet {
             defaults.set(pencilContactClick, forKey: Key.pencilClick)
+            updateSurface()
+        }
+    }
+    var fingerInputEnabled: Bool {
+        didSet {
+            defaults.set(fingerInputEnabled, forKey: Key.fingerInput)
             updateSurface()
         }
     }
@@ -195,6 +202,7 @@ final class SidecarTabletModel {
         selectedDeviceName = defaults.string(forKey: Key.selectedDevice) ?? ""
         mode = TabletMappingMode(rawValue: defaults.string(forKey: Key.mode) ?? "absolute") ?? .absolute
         pencilContactClick = defaults.object(forKey: Key.pencilClick) as? Bool ?? true
+        fingerInputEnabled = defaults.bool(forKey: Key.fingerInput)
         touchClick = defaults.object(forKey: Key.touchClick) as? Bool ?? true
         if let data = defaults.data(forKey: Key.activeArea), let area = try? JSONDecoder().decode(TabletActiveArea.self, from: data) {
             activeArea = area.bounded()
@@ -307,7 +315,8 @@ final class SidecarTabletModel {
     }
 
     private func updateSurface() {
-        surfaceWindow?.apply(mode: mode, activeArea: activeArea, pencilClick: pencilContactClick, touchClick: touchClick)
+        surfaceWindow?.apply(mode: mode, activeArea: activeArea, pencilClick: pencilContactClick,
+                             fingerInputEnabled: fingerInputEnabled && supportsSidecarTouch, touchClick: touchClick)
     }
 }
 
@@ -332,8 +341,10 @@ private final class TabletSurfaceWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not from a nib") }
 
-    func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool, touchClick: Bool) {
-        surface.apply(mode: mode, activeArea: activeArea, pencilClick: pencilClick, touchClick: touchClick)
+    func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool,
+               fingerInputEnabled: Bool, touchClick: Bool) {
+        surface.apply(mode: mode, activeArea: activeArea, pencilClick: pencilClick,
+                      fingerInputEnabled: fingerInputEnabled, touchClick: touchClick)
     }
 
     func move(to screen: NSScreen) {
@@ -354,6 +365,7 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     private var mode: TabletMappingMode = .absolute
     private var activeArea = TabletActiveArea.full
     private var pencilClick = true
+    private var fingerInputEnabled = false
     private var touchClick = true
     private var lastTouchPoint: CGPoint?
     private var lastPointerPoint: CGPoint?
@@ -372,7 +384,8 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         tap.delegate = self
         tap.buttonMask = 0
         addGestureRecognizer(tap)
-        apply(mode: model.mode, activeArea: model.activeArea, pencilClick: model.pencilContactClick, touchClick: model.touchClick)
+        apply(mode: model.mode, activeArea: model.activeArea, pencilClick: model.pencilContactClick,
+              fingerInputEnabled: model.fingerInputEnabled && model.supportsSidecarTouch, touchClick: model.touchClick)
     }
 
     @available(*, unavailable)
@@ -389,10 +402,12 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         super.updateTrackingAreas()
     }
 
-    func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool, touchClick: Bool) {
+    func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool,
+               fingerInputEnabled: Bool, touchClick: Bool) {
         self.mode = mode
         self.activeArea = activeArea.bounded()
         self.pencilClick = pencilClick
+        self.fingerInputEnabled = fingerInputEnabled
         self.touchClick = touchClick
         needsDisplay = true
     }
@@ -443,7 +458,7 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     override func rightMouseUp(with event: NSEvent) { router.rightClick(down: false) }
 
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldReceive touch: NSTouch) -> Bool {
-        touch.type == .direct
+        fingerInputEnabled && touch.type == .direct
     }
 
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldAttemptToRecognizeWith event: NSEvent) -> Bool {
@@ -455,6 +470,10 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     }
 
     @objc private func directTouchPan(_ recognizer: NSPanGestureRecognizer) {
+        guard fingerInputEnabled else {
+            lastTouchPoint = nil
+            return
+        }
         let point = recognizer.location(in: self)
         switch recognizer.state {
         case .began:
@@ -474,7 +493,7 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     }
 
     @objc private func directTouchTap(_ recognizer: NSClickGestureRecognizer) {
-        guard recognizer.state == .ended else { return }
+        guard fingerInputEnabled, recognizer.state == .ended else { return }
         let point = recognizer.location(in: self)
         route(point)
         guard touchClick else { return }
