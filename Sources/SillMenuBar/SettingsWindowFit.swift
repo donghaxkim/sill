@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// How tall the Settings window may be on a screen, and where it goes when Sill changes its size
+/// How tall the Settings window may be on a screen, and where it goes when HitPad changes its size
 /// (issue #59, docs/settings-window-plan.md). AppKit makes the window as tall as the selected pane's
 /// whole content; SettingsWindowController caps it with one constraint whose constant is
 /// `contentLimit`, and the pane, a grouped Form, scrolls. Pure (CoreGraphics only), so
@@ -17,12 +17,12 @@ enum SettingsWindowFit {
     struct Screen: Equatable {
         /// NSScreen.visibleFrame: under the menu bar and beside the Dock, in global coordinates.
         var visible: CGRect
-        /// Sill's own virtual display, where a streamed window lives, off the user's screens.
+        /// HitPad's own virtual display, where a streamed window lives, off the user's screens.
         var sillVirtual: Bool
     }
 
     /// The screen whose visible frame bounds the window: the one it is on (`windowOn`, an index into
-    /// `screens`); on none, or on Sill's virtual display, the first other screen, the one
+    /// `screens`); on none, or on HitPad's virtual display, the first other screen, the one
     /// WindowPlacement.bringForward moves it to. Nil with no other screen.
     static func screenIndex(windowOn: Int?, screens: [Screen]) -> Int? {
         if let i = windowOn, screens.indices.contains(i), !screens[i].sillVirtual { return i }

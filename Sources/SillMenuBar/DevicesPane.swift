@@ -58,12 +58,12 @@ struct DevicesPane: View {
                 Toggle("Require pairing", isOn: $requirePairing)
                     .disabled(unavailable != nil)
                 if let problem = unavailable {
-                    Warning("Devices can’t connect: Sill couldn’t use its key in your keychain (\(withoutFullStop(problem))). Quit Sill and open it again, and choose Always Allow if the keychain asks.")
+                    Warning("Devices can’t connect: HitPad couldn’t use its key in your keychain (\(withoutFullStop(problem))). Quit HitPad and open it again, and choose Always Allow if the keychain asks.")
                 } else if let p = requirePairingProblem {
                     let reason = withoutFullStop(p.reason)
                     Warning(p.wanted
-                            ? "Pairing is required until Sill quits: Sill couldn’t update the keychain (\(reason)). Try again."
-                            : "Pairing is still required: Sill couldn’t update the keychain (\(reason)). Try again.")
+                            ? "Pairing is required until HitPad quits: HitPad couldn’t update the keychain (\(reason)). Try again."
+                            : "Pairing is still required: HitPad couldn’t update the keychain (\(reason)). Try again.")
                 }
             } footer: {
                 if requirePairing {
@@ -87,11 +87,11 @@ struct DevicesPane: View {
                 Text("\(removedName) can no longer connect. To use it again, pair it again.")
             }
             if let removeProblem {
-                Warning("\(removeProblem.name) is still paired: Sill couldn’t update the keychain (\(withoutFullStop(removeProblem.reason))). Try again.")
+                Warning("\(removeProblem.name) is still paired: HitPad couldn’t update the keychain (\(withoutFullStop(removeProblem.reason))). Try again.")
             }
             if unavailable != nil {
                 // The trust list lives with the key: unread, not empty.
-                Text("Your paired devices show here once Sill can use its key again.").foregroundStyle(.secondary)
+                Text("Your paired devices show here once HitPad can use its key again.").foregroundStyle(.secondary)
             } else if status.paired.isEmpty {
                 Text("No paired devices yet.").foregroundStyle(.secondary)
             }

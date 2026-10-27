@@ -4,7 +4,8 @@ import SwiftUI
 struct SidecarTabletPane: View {
     @Bindable var tablet: SidecarTabletModel
     @Bindable var permissions: PermissionsModel
-    @State private var fineTuneArea = false
+    @State private var didJustSaveArea = false
+    @State private var saveFeedbackTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,13 +32,20 @@ struct SidecarTabletPane: View {
                     .disabled(tablet.devices.isEmpty || tablet.isConnecting || tablet.isConnected)
 
                     LabeledContent("Status") {
-                        Text(tablet.statusText)
-                            .foregroundStyle(tablet.isConnected ? .primary : .secondary)
-                            .multilineTextAlignment(.trailing)
+                        if tablet.isConnected, let deviceName = tablet.connectedDeviceName {
+                            Label("Connected to \(deviceName)", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        } else {
+                            Text(tablet.statusText)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
                     }
 
                     HStack {
-                        Button(tablet.isConnected ? "Disconnect" : tablet.isConnecting ? "Connecting…" : "Connect") {
+                        Button(tablet.isConnected
+                               ? (tablet.isUsingExistingSidecarSession ? "Stop mapping" : "Disconnect")
+                               : tablet.isConnecting ? "Connecting…" : "Connect") {
                             if tablet.isConnected { tablet.disconnect() }
                             else { tablet.connectSelected() }
                         }
@@ -47,8 +55,46 @@ struct SidecarTabletPane: View {
                             .disabled(tablet.isConnecting)
                     }
 
+                    if tablet.canDisconnectSidecarSession && !tablet.isConnected {
+                        Button("Disconnect Sidecar", systemImage: "xmark.circle") {
+                            tablet.disconnect()
+                        }
+                    }
+
                     if let problem = tablet.problem {
-                        Warning(problem)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Warning(problem)
+                            HStack(spacing: 12) {
+                                if tablet.needsExtendedDisplayRecovery {
+                                    Button("Fix display…", systemImage: "display") {
+                                        tablet.isDisplayRecoveryPopoverPresented = true
+                                    }
+                                    .popover(isPresented: $tablet.isDisplayRecoveryPopoverPresented, arrowEdge: .bottom) {
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            Label("Extended Display required", systemImage: "display")
+                                                .font(.headline)
+                                            Text(tablet.displayRecoveryMessage)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                            HStack {
+                                                Button("Open Displays Settings") {
+                                                    tablet.isDisplayRecoveryPopoverPresented = false
+                                                    tablet.openDisplaysSettings()
+                                                }
+                                                .buttonStyle(.borderedProminent)
+                                                Button("Try Again") {
+                                                    tablet.isDisplayRecoveryPopoverPresented = false
+                                                    tablet.connectSelected()
+                                                }
+                                            }
+                                        }
+                                        .padding(16)
+                                        .frame(width: 360, alignment: .leading)
+                                    }
+                                }
+
+                            }
+                            .controlSize(.small)
+                        }
                     }
                 } header: {
                     Text("Connection")
@@ -57,12 +103,32 @@ struct SidecarTabletPane: View {
                 }
 
                 Section {
+                    if tablet.targetDisplays.count > 1 {
+                        Picker("Mac display", selection: $tablet.targetDisplaySelection) {
+                            ForEach(tablet.targetDisplays) { display in
+                                Text(display.label).tag(Int(display.id))
+                            }
+                        }
+                    } else if let display = tablet.targetDisplays.first {
+                        LabeledContent("Mac display", value: display.label)
+                    }
+
                     Picker("Control mode", selection: $tablet.mode) {
                         ForEach(TabletMappingMode.allCases) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    Text(tablet.mode == .absolute
+                         ? "Tablet maps points inside the active area to matching points on the Mac. Outside input is ignored."
+                         : "Trackpad moves the pointer by relative distance inside the active area. Outside input is ignored.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Text("Pointer appears on the selected Mac display. The iPad stays cursor-free while mapping.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
 
                     HStack(alignment: .top, spacing: 20) {
                         TabletAreaEditor(area: tablet.activeArea) { area in
@@ -71,7 +137,7 @@ struct SidecarTabletPane: View {
                         .frame(width: 320, height: 240)
 
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Mapped area")
+                            Text(tablet.mode == .absolute ? "Mapped area" : "Active area")
                                 .font(.headline)
 
                             LabeledContent("Position") {
@@ -87,23 +153,61 @@ struct SidecarTabletPane: View {
                                 Button("Use full surface", systemImage: "arrow.up.left.and.arrow.down.right") {
                                     tablet.setActiveArea(.full)
                                 }
+                                .labelStyle(MappingActionLabelStyle())
+                                .buttonStyle(.bordered)
+                                .controlSize(.regular)
                             }
+
+                            VStack(alignment: .leading, spacing: 7) {
+                                Text("Fine-tune")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                areaSlider("Left edge", keyPath: \.x,
+                                           range: 0...max(0, 1 - tablet.activeArea.width))
+                                areaSlider("Top edge", keyPath: \.y,
+                                           range: 0...max(0, 1 - tablet.activeArea.height))
+                                areaSlider("Width", keyPath: \.width, range: 0.1...1)
+                                areaSlider("Height", keyPath: \.height, range: 0.1...1)
+
+                                HStack(spacing: 8) {
+                                    if tablet.hasUnsavedAreaChanges {
+                                        Button("Undo", systemImage: "arrow.uturn.backward") {
+                                            restoreSavedArea()
+                                        }
+                                        .labelStyle(MappingActionLabelStyle())
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.regular)
+                                    }
+                                    Spacer(minLength: 4)
+                                    Button(action: saveArea) {
+                                        Text(didJustSaveArea ? "Saved." : "Save")
+                                            .contentTransition(.opacity)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.regular)
+                                    .disabled(!tablet.hasUnsavedAreaChanges)
+                                }
+                                .padding(.top, 3)
+                            }
+                            .padding(.top, 5)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    DisclosureGroup("Fine-tune area", isExpanded: $fineTuneArea) {
-                        areaSlider("X position", keyPath: \.x, range: 0...max(0, 1 - tablet.activeArea.width))
-                        areaSlider("Y position", keyPath: \.y, range: 0...max(0, 1 - tablet.activeArea.height))
-                        areaSlider("Width", keyPath: \.width, range: 0.1...1)
-                        areaSlider("Height", keyPath: \.height, range: 0.1...1)
                     }
                 } header: {
                     Text("Mapping")
                 } footer: {
-                    Footnote(tablet.mode == .absolute
-                             ? "Tablet maps the selected iPad area to the Mac display. Drag the area to move it or a corner to resize it."
-                             : "Trackpad moves the Mac pointer relative to Pencil or finger movement. The selected area limits where input is read.")
+                    Footnote("Left and Top set the area’s offset from the iPad’s upper-left. Drag to move it or a corner to resize. Width and height range from 10% to 100%. Changes preview live; Save keeps them for next time.")
+                }
+
+                Section {
+                    Button("Open Menu Bar Settings…", systemImage: "arrow.up.right.square") {
+                        tablet.openMenuBarSettings()
+                    }
+                } header: {
+                    Text("Mac menu bar")
+                } footer: {
+                    Footnote("Choose Always under Automatically hide and show the menu bar. macOS applies this to all displays and shows the bar again when the pointer reaches the top edge.")
                 }
 
                 Section {
@@ -132,31 +236,65 @@ struct SidecarTabletPane: View {
                     Footnote("Reconnect to the selected iPad whenever this app starts.")
                 }
 
-                if !permissions.accessibility {
+                if !permissions.pointerEventPosting {
                     Section {
-                        Warning("Accessibility permission is required to move and click the Mac pointer.")
-                        Button("Allow Accessibility…") { permissions.requestAccessibility() }
+                        Warning("This HitPad build cannot post pointer events. An enabled HitPad entry may belong to an older build.")
+                        Footnote("Ad-hoc development builds get a new code identity after each rebuild. If HitPad is already on, remove its old entry and add the currently running build.")
+                        Button("Open Accessibility Settings…") {
+                            permissions.openPrivacyPane("Privacy_Accessibility")
+                        }
                     } header: {
-                        Text("Permission")
+                        Text("Pointer control")
                     }
                 }
             }
             .formStyle(.grouped)
         }
         .frame(width: 700)
+        .onChange(of: tablet.hasUnsavedAreaChanges) { _, isDirty in
+            if isDirty {
+                saveFeedbackTask?.cancel()
+                withAnimation(.snappy(duration: 0.2)) { didJustSaveArea = false }
+            }
+        }
+        .onDisappear { saveFeedbackTask?.cancel() }
     }
 
     private func areaSlider(_ title: String, keyPath: WritableKeyPath<TabletActiveArea, Double>,
                             range: ClosedRange<Double>) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 10) {
-                Slider(value: areaBinding(keyPath), in: range)
-                    .frame(width: 220)
-                Text(percent(tablet.activeArea[keyPath: keyPath]))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(width: 42, alignment: .trailing)
-            }
+        HStack(spacing: 8) {
+            Text(title)
+                .frame(width: 76, alignment: .leading)
+            Slider(value: areaBinding(keyPath), in: range)
+                .frame(maxWidth: .infinity)
+            TextField(title, value: areaBinding(keyPath),
+                      format: .percent.precision(.fractionLength(1)))
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .monospacedDigit()
+                .frame(width: 58)
+                .accessibilityLabel(title)
+        }
+        .font(.callout)
+    }
+
+    private func saveArea() {
+        tablet.saveActiveArea()
+        saveFeedbackTask?.cancel()
+        withAnimation(.snappy(duration: 0.2)) { didJustSaveArea = true }
+        saveFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.2)) { didJustSaveArea = false }
+        }
+    }
+
+    private func restoreSavedArea() {
+        saveFeedbackTask?.cancel()
+        withAnimation(.snappy(duration: 0.2)) {
+            tablet.restoreSavedActiveArea()
+            didJustSaveArea = false
         }
     }
 
@@ -172,7 +310,17 @@ struct SidecarTabletPane: View {
     }
 
     private func percent(_ value: Double) -> String {
-        value.formatted(.percent.precision(.fractionLength(0)))
+        value.formatted(.percent.precision(.fractionLength(1)))
+    }
+}
+
+private struct MappingActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+                .frame(width: 14)
+            configuration.title
+        }
     }
 }
 

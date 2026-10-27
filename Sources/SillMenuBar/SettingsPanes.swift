@@ -23,9 +23,9 @@ struct SettingsPane: View {
         }
         .formStyle(.grouped)
         .frame(width: tab == .tablet ? 700 : 520)
-        // Permissions and the login item change behind Sill's back, in System Settings. Re-read
-        // them once a second, only while this tab is on screen, and when Sill becomes active; an
-        // idle Sill with Settings closed wakes for nothing. The Devices and Remote Access panes
+        // Permissions and the login item change behind HitPad's back, in System Settings. Re-read
+        // them once a second, only while this tab is on screen, and when HitPad becomes active; an
+        // idle HitPad with Settings closed wakes for nothing. The Devices and Remote Access panes
         // follow the host's status, which is pushed, so they poll nothing.
         .task(id: model.visibleSettingsTab == tab) {
             guard model.visibleSettingsTab == tab, tab != .streaming, tab != .devices, tab != .remoteAccess else { return }
@@ -109,7 +109,7 @@ private struct GeneralPane: View {
 // MARK: Clipboard
 
 /// Share clipboard with devices (HostClipboard, docs/clipboard-plan.md): the switch and its footnote,
-/// and while the switch is on and macOS does not allow every read Sill makes on its own
+/// and while the switch is on and macOS does not allow every read HitPad makes on its own
 /// (ClipboardPolicy.MacAccess), why what is copied here stays on this Mac and the way to allow it.
 /// Drawn alone in the previews in each of macOS's answers (DebugHooks).
 struct ClipboardSection: View {
@@ -141,7 +141,7 @@ struct ClipboardSection: View {
 // MARK: Updates
 
 /// Settings › General's update check: the automatic switch, the line (what the last check found, or
-/// why Sill cannot check), Open Release Page… while a newer release is offered, and Check Now. Plain
+/// why HitPad cannot check), Open Release Page… while a newer release is offered, and Check Now. Plain
 /// values in, so the previews draw every state. Errors show here and in the log, never in an alert.
 struct UpdatesSection: View {
     struct Actions {
@@ -222,7 +222,7 @@ private struct StreamingPane: View {
             } header: {
                 Text("Away from home")
             } footer: {
-                Footnote("Sill streams at these while every connected device is away from home, through a VPN or over the internet, so a slow connection never starts at your home quality. A device away from home changes these, and never your Quality and Resolution above."
+                Footnote("HitPad streams at these while every connected device is away from home, through a VPN or over the internet, so a slow connection never starts at your home quality. A device away from home changes these, and never your Quality and Resolution above."
                          + (model.coordinator?.status.snapshot.away == true ? " Streaming at these now." : ""))
             }
             Section {
@@ -235,7 +235,7 @@ private struct StreamingPane: View {
             Section {
                 Toggle("Send audio (beta)", isOn: $settings.config.sendAudio)
                 if settings.config.sendAudio, let problem = model.coordinator?.status.snapshot.audio?.problem {
-                    Warning("Sill \(problem). The picture is unaffected.")
+                    Warning("HitPad \(problem). The picture is unaffected.")
                 }
             } footer: {
                 Footnote("Beta. Devices play the sound of what you stream: all of the streamed window’s app, or every app for the Desktop. The Mac keeps playing it too, and each device can mute it with its Sound button. Only this Mac turns it on. Nothing is recorded.")
@@ -244,7 +244,7 @@ private struct StreamingPane: View {
                 Section {
                     Label(snapshot.hardwareEncoderStuck
                           ? "The hardware encoder is stuck, so streams use the software encoder: up to 60 fps at Standard resolution. Restarting the Mac fixes this."
-                          : "The hardware encoder is busy or not answering, so streams use the software encoder: up to 60 fps at Standard resolution. Sill switches back by itself once it keeps up again.",
+                          : "The hardware encoder is busy or not answering, so streams use the software encoder: up to 60 fps at Standard resolution. HitPad switches back by itself once it keeps up again.",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
@@ -266,7 +266,7 @@ private struct VirtualDisplayPane: View {
             Section {
                 Toggle("Stream from a virtual display", isOn: $settings.config.virtualDisplay)
             } footer: {
-                Footnote("Sill moves the window you pick onto an invisible display made for your device, so it keeps updating when other windows cover it and text is drawn at your device’s scale. The window leaves this screen while it streams and comes back when you stop streaming or quit Sill.")
+                Footnote("HitPad moves the window you pick onto an invisible display made for your device, so it keeps updating when other windows cover it and text is drawn at your device’s scale. The window leaves this screen while it streams and comes back when you stop streaming or quit HitPad.")
             }
             Section {
                 LabeledContent("Status") {
@@ -291,7 +291,7 @@ private struct VirtualDisplayPane: View {
                     }
                 }
             } footer: {
-                Footnote("Uses a private macOS interface (CGVirtualDisplay). If a macOS update breaks it, Sill streams the window where it is.")
+                Footnote("Uses a private macOS interface (CGVirtualDisplay). If a macOS update breaks it, HitPad streams the window where it is.")
             }
         }
     }
@@ -327,22 +327,22 @@ private struct PermissionsPane: View {
             Section {
                 PermissionRow(title: "Screen Recording", allowed: permissions.screenRecording,
                               // Not "on this network": a device connected over Direct Wireless shares none.
-                              explanation: "Lets Sill capture the windows you pick on your iPhone or iPad, and their sound when Send Audio is on. Nothing is recorded or saved; frames and sound go straight to your devices.",
+                              explanation: "Lets HitPad capture the windows you pick on your iPhone or iPad, and their sound when Send Audio is on. Nothing is recorded or saved; frames and sound go straight to your devices.",
                               button: model.settings.askedScreenRecording ? "Open System Settings…" : "Allow…") {
                     permissions.requestScreenRecording()
                 }
                 PermissionRow(title: "Accessibility", allowed: permissions.accessibility,
-                              explanation: "Lets your iPhone or iPad click, scroll and type on this Mac, and lets Sill move and size the window it streams.",
+                              explanation: "Lets your iPhone or iPad click, scroll and type on this Mac, and lets HitPad move and size the window it streams.",
                               button: model.settings.askedAccessibility ? "Open System Settings…" : "Allow…") {
                     permissions.requestAccessibility()
                 }
             } footer: {
-                Footnote("Access belongs to Sill itself. Access you gave Terminal for the SillHost command-line tool doesn’t carry over.")
+                Footnote("Access belongs to HitPad itself. Access you gave Terminal for the separate command-line host doesn’t carry over.")
             }
             if permissions.relaunchSuggested, !permissions.screenRecording {
                 Section {
-                    LabeledContent("Screen Recording starts working once Sill opens again.") {
-                        Button(permissions.canRelaunch ? "Relaunch Sill" : "Quit Sill") { permissions.relaunch() }
+                    LabeledContent("Screen Recording starts working once HitPad opens again.") {
+                        Button(permissions.canRelaunch ? "Relaunch HitPad" : "Quit HitPad") { permissions.relaunch() }
                     }
                 }
             }
@@ -352,13 +352,13 @@ private struct PermissionsPane: View {
                         Button("Open Local Network…") { permissions.openPrivacyPane("Privacy_LocalNetwork") }
                     } label: {
                         Text("Local Network")
-                        Text("If your iPhone or iPad can’t find this Mac, allow Sill in Privacy & Security › Local Network.")
+                        Text("If your iPhone or iPad can’t find this Mac, allow HitPad in Privacy & Security › Local Network.")
                     }
                 }
             }
             if permissions.allGranted {
                 Section {
-                    Label("You’re all set. Open Sill on your iPhone or iPad.", systemImage: "checkmark.seal.fill")
+                    Label("You’re all set. Open HitPad on your iPhone or iPad.", systemImage: "checkmark.seal.fill")
                 }
             }
         }

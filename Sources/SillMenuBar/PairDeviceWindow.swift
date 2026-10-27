@@ -18,12 +18,12 @@ final class PairingWindowState {
 /// code. Closing it cancels the pairing window, and the code dies with it.
 ///
 /// A window the Mac's user opened (the menu, a pane, New Code) comes forward as any window they ask
-/// for, activating Sill. One a device opened by asking comes to the front without activating Sill or
+/// for, activating HitPad. One a device opened by asking comes to the front without activating HitPad or
 /// taking the keyboard (`WindowPlacement.showInFront`), over a full-screen app too, so a request
 /// can never swallow a password being typed in another app.
 ///
 /// `sharingType = .none` is a best effort only (ScreenCaptureKit is reported to ignore it from
-/// macOS 15); what keeps the code off every device is the Desktop stream leaving Sill's own
+/// macOS 15); what keeps the code off every device is the Desktop stream leaving HitPad's own
 /// windows out, and the window catalog skipping them.
 @MainActor
 final class PairDeviceWindowController: NSWindowController, NSWindowDelegate {
@@ -75,7 +75,7 @@ final class PairDeviceWindowController: NSWindowController, NSWindowDelegate {
     var isShowing: Bool { window?.isVisible == true && state.offer != nil }
 
     /// The menu's "‹device› Wants to Pair" while its window is up: forward and key (a click in the
-    /// menu, so activating Sill is what the user asked for).
+    /// menu, so activating HitPad is what the user asked for).
     func bringForward() {
         guard let window else { return }
         WindowPlacement.bringForward(window)
@@ -145,7 +145,7 @@ struct PairDeviceView: View {
             if offer.byDevice { return .waiting(triesLeft: triesLeft, wrongFrom: wrongFrom) }
             switch status.listener {
             case .portInUse(let p): return .doorDown("Can’t pair while port \(p) is in use.")
-            case .failed: return .doorDown("Can’t pair: remote access couldn’t start. Sill tries again every 30 seconds.")
+            case .failed: return .doorDown("Can’t pair: remote access couldn’t start. HitPad tries again every 30 seconds.")
             case .off, .listening: return .waiting(triesLeft: triesLeft, wrongFrom: wrongFrom)
             }
         case .paired(let name): return .paired(name)
@@ -182,7 +182,7 @@ struct PairDeviceView: View {
                         .font(.headline)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text("In Sill on your iPhone or iPad, tap this Mac, or tap Add a Mac… when you’re away, then point it at this code.")
+                Text("In HitPad on your iPhone or iPad, tap this Mac, or tap Add a Mac… when you’re away, then point it at this code.")
                     .fixedSize(horizontal: false, vertical: true)
             }
             QRCodeView(text: offer.url, spent: isSpent)
@@ -361,7 +361,7 @@ final class CableNoticeState {
 
 /// "Paired over the USB Cable" (docs/home-pairing-plan.md §6.3): after a device paired by itself
 /// over the cable, once per pairing (never per connection). Shown like a window a device opened,
-/// in front without activating Sill or taking the keyboard, and closes by itself after 10 s.
+/// in front without activating HitPad or taking the keyboard, and closes by itself after 10 s.
 /// Remove is the Devices pane's Remove, with its keychain rule. VoiceOver announces its first line.
 ///
 /// A window of its own beside the pairing window, not the pairing window in a new phase: a
@@ -457,7 +457,7 @@ struct CableNoticeView: View {
                 Text("It paired by itself over the USB cable, and can connect over Wi\u{2011}Fi and nearby from now on too.")
                     .fixedSize(horizontal: false, vertical: true)
                 if let removeProblem {
-                    Warning("\(name) is still paired: Sill couldn’t update the keychain (\(withoutFullStop(removeProblem))). Try again.")
+                    Warning("\(name) is still paired: HitPad couldn’t update the keychain (\(withoutFullStop(removeProblem))). Try again.")
                 }
             }
             HStack {

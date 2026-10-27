@@ -2,8 +2,8 @@ import Foundation
 import Observation
 import StreamProtocol
 
-/// Sill.app's update check (docs/update-notice-plan.md §6): asks GitHub's releases feed whether a
-/// newer Sill is out, keeps what it learned in the app's defaults, and says so through `offer` (the
+/// HitPad.app's update check (docs/update-notice-plan.md §6): asks GitHub's releases feed whether a
+/// newer HitPad is out, keeps what it learned in the app's defaults, and says so through `offer` (the
 /// status menu's item) and `pane` (Settings › General). UpdatePolicy decides what every answer
 /// means; this class does the asking and the timing. Foundation and Observation only (and
 /// StreamProtocol's SillVersion), so it compiles on its own with swiftc against a local fake feed,
@@ -16,7 +16,7 @@ import StreamProtocol
 /// automatic check it joins it. At most one request is in flight, one an hour while network errors
 /// last, one a period otherwise, and never a retry of a 404, 403, 429 or 5xx before the next period.
 ///
-/// What goes out: GET the feed with `User-Agent: Sill/‹version›`, GitHub's Accept and API version
+/// What goes out: GET the feed with `User-Agent: HitPad/‹version›`, GitHub's Accept and API version
 /// headers, `Accept-Language: en`, and If-None-Match with a stored ETag and release (URLSession adds
 /// Host, Accept-Encoding and Connection); an ephemeral session with no cookies, no cache and no
 /// credentials; redirects only to https://api.github.com/. Never a token, an identifier or anything
@@ -33,7 +33,7 @@ final class UpdateChecker {
         /// A feed on this Mac (`-SillUpdateFeed`): any http or https release page counts, and test
         /// pattern mode checks.
         var testFeed = false
-        /// This Sill's version as written (CFBundleShortVersionString, or `-SillUpdateVersion`); a
+        /// This HitPad's version as written (CFBundleShortVersionString, or `-SillUpdateVersion`); a
         /// build whose version does not parse ("dev") never checks.
         var running: String?
         /// `--synthetic`: no check without a test feed.
@@ -53,7 +53,7 @@ final class UpdateChecker {
     /// What the defaults keep (UpdatePolicy.Stored).
     private(set) var stored: UpdatePolicy.Stored
     /// This run's last Check Now result, until an automatic check that GitHub answers replaces it
-    /// with what is known then (Sill.app runs from login for weeks: a release out since Check Now
+    /// with what is known then (HitPad.app runs from login for weeks: a release out since Check Now
     /// must show), and how many Check Now results there were (VoiceOver hears each).
     private(set) var result: UpdatePolicy.Outcome?
     private(set) var resultCount = 0
@@ -99,7 +99,7 @@ final class UpdateChecker {
         c.waitsForConnectivity = false
         // Accept-Language fixed: URLSession would otherwise send this Mac's preferred languages.
         // What else it adds (Host, Accept-Encoding, Connection) says nothing about the Mac.
-        c.httpAdditionalHeaders = ["User-Agent": "Sill/\(configuration.running ?? "unknown")",
+        c.httpAdditionalHeaders = ["User-Agent": "HitPad/\(configuration.running ?? "unknown")",
                                    "Accept": "application/vnd.github+json",
                                    "X-GitHub-Api-Version": "2022-11-28",
                                    "Accept-Language": "en"]
@@ -131,12 +131,12 @@ final class UpdateChecker {
 
     // MARK: Starting and scheduling
 
-    /// Once the host has started, or could not (a newer Sill may be the fix): says what an earlier
+    /// Once the host has started, or could not (a newer HitPad may be the fix): says what an earlier
     /// check found, runs `-SillUpdateNow`'s check, and schedules the automatic ones.
     func start() {
         guard !started else { return }
         started = true
-        if let offer { print("Update: Sill \(offer.version) is available (found by an earlier check).") }
+        if let offer { print("Update: HitPad \(offer.version) is available (found by an earlier check).") }
         if configuration.checkAtStart {
             if testPatternOnly {
                 print("SillUpdateNow ignored: test pattern mode checks only a test feed (-SillUpdateFeed).")

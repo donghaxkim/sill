@@ -4,7 +4,7 @@ import SillHostCore
 /// The Log window: what the host printed, for an app whose stdout goes nowhere. The last 5,000
 /// lines from HostLog's ring, then new ones as they come (HostLog wakes it at most every 100 ms,
 /// and only while the window is open). Selectable, ⌘F finds, ⌘C copies. The same lines are in
-/// ~/Library/Logs/Sill/Sill.log for `tail -F`.
+/// ~/Library/Logs/HitPad/HitPad.log for `tail -F`.
 @MainActor
 final class LogWindowController: NSWindowController, NSWindowDelegate {
     private static let keepLines = 5_000
@@ -33,7 +33,7 @@ final class LogWindowController: NSWindowController, NSWindowDelegate {
 
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 520),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: true)
-        window.title = "Sill Log"
+        window.title = "HitPad Log"
         window.isReleasedWhenClosed = false
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.minSize = NSSize(width: 480, height: 240)

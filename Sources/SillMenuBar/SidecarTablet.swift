@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import CoreGraphics
 import Darwin
 import Observation
@@ -37,6 +36,15 @@ struct TabletActiveArea: Codable, Equatable {
         result.y = min(max(y, 0), 1 - result.height)
         return result
     }
+
+    func roundedToTenthPercent() -> TabletActiveArea {
+        var result = bounded()
+        result.x = (result.x * 1_000).rounded() / 1_000
+        result.y = (result.y * 1_000).rounded() / 1_000
+        result.width = (result.width * 1_000).rounded() / 1_000
+        result.height = (result.height * 1_000).rounded() / 1_000
+        return result.bounded()
+    }
 }
 
 struct SidecarDevice: Identifiable, Equatable {
@@ -44,8 +52,16 @@ struct SidecarDevice: Identifiable, Equatable {
     var id: String { name }
 }
 
+struct TabletTargetDisplay: Identifiable, Equatable {
+    let id: CGDirectDisplayID
+    let name: String
+    let isBuiltIn: Bool
+
+    var label: String { isBuiltIn ? "\(name) (Built-in)" : name }
+}
+
 /// The Sidecar connection entry points are private on macOS. Keep their use isolated here so the
-/// input surface and the rest of Sill do not depend on the private class or its selectors.
+/// input surface and the rest of HitPad do not depend on the private class or its selectors.
 @MainActor
 private final class SidecarBridge {
     private let frameworkPath = "/System/Library/PrivateFrameworks/SidecarCore.framework/SidecarCore"
@@ -65,31 +81,35 @@ private final class SidecarBridge {
         try await performConnection(selector: "disconnectFromDevice:completion:", name: name)
     }
 
-    func displayID() -> CGDirectDisplayID? {
+    /// macOS can expose a mirrored Sidecar display in CoreGraphics before AppKit lists it as an
+    /// NSScreen. Reuse it only when its Sidecar vendor marker is unique, so another Apple display
+    /// cannot be mistaken for the selected iPad.
+    func sidecarDisplayID() -> CGDirectDisplayID? {
         var ids = [CGDirectDisplayID](repeating: 0, count: 16)
         var count: UInt32 = 0
         guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return nil }
-        return ids.prefix(Int(count)).first { id in
-            CGDisplayIsBuiltin(id) == 0 && CGDisplayVendorNumber(id) == 0x6161_706C
+        let candidates = ids.prefix(Int(count)).filter {
+            CGDisplayIsBuiltin($0) == 0 && CGDisplayVendorNumber($0) == 0x6161_706C
         }
+        return candidates.count == 1 ? candidates.first : nil
     }
 
     func extendDisplay(_ id: CGDirectDisplayID) throws {
         guard CGDisplayIsInMirrorSet(id) != 0 else { return }
         guard CGDisplayIsAlwaysInMirrorSet(id) == 0 else {
-            throw SidecarError("macOS is keeping the iPad in mirror mode.")
+            throw SidecarError("macOS is keeping the iPad in mirror mode.", requiresExtendedDisplay: true)
         }
         var configuration: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else {
-            throw SidecarError("macOS couldn’t prepare the iPad display for tablet input.")
+            throw SidecarError("macOS couldn’t prepare the iPad display for tablet input.", requiresExtendedDisplay: true)
         }
         let configureResult = CGConfigureDisplayMirrorOfDisplay(configuration, id, kCGNullDirectDisplay)
         guard configureResult == .success else {
             CGCancelDisplayConfiguration(configuration)
-            throw SidecarError("macOS couldn’t switch the iPad to Extended Display.")
+            throw SidecarError("macOS couldn’t switch the iPad to Extended Display.", requiresExtendedDisplay: true)
         }
         guard CGCompleteDisplayConfiguration(configuration, .forSession) == .success else {
-            throw SidecarError("macOS couldn’t apply the Extended Display setting.")
+            throw SidecarError("macOS couldn’t apply the Extended Display setting.", requiresExtendedDisplay: true)
         }
     }
 
@@ -139,7 +159,13 @@ private final class SidecarBridge {
 
 private struct SidecarError: LocalizedError {
     let message: String
-    init(_ message: String) { self.message = message }
+    let requiresExtendedDisplay: Bool
+
+    init(_ message: String, requiresExtendedDisplay: Bool = false) {
+        self.message = message
+        self.requiresExtendedDisplay = requiresExtendedDisplay
+    }
+
     var errorDescription: String? { message }
 }
 
@@ -147,24 +173,36 @@ private struct SidecarError: LocalizedError {
 @Observable
 final class SidecarTabletModel {
     private enum Key {
-        static let selectedDevice = "Sill.tablet.sidecarDevice"
-        static let mode = "Sill.tablet.mappingMode"
-        static let pencilClick = "Sill.tablet.pencilClick"
-        static let fingerInput = "Sill.tablet.fingerInput"
-        static let touchClick = "Sill.tablet.touchClick"
-        static let activeArea = "Sill.tablet.activeArea"
-        static let connectAtLaunch = "Sill.tablet.connectAtLaunch"
+        static let selectedDevice = "HitPad.tablet.sidecarDevice"
+        static let mode = "HitPad.tablet.mappingMode"
+        static let pencilClick = "HitPad.tablet.pencilClick"
+        static let fingerInput = "HitPad.tablet.fingerInput"
+        static let touchClick = "HitPad.tablet.touchClick"
+        static let activeArea = "HitPad.tablet.activeArea"
+        static let connectAtLaunch = "HitPad.tablet.connectAtLaunch"
+        static let targetDisplay = "HitPad.tablet.targetDisplay"
     }
 
     private let defaults: UserDefaults
     private let bridge = SidecarBridge()
     private var surfaceWindow: TabletSurfaceWindowController?
     private var screenObserver: NSObjectProtocol?
+    private var terminationObserver: NSObjectProtocol?
+    @ObservationIgnored private var hiddenCursorDisplayID: CGDirectDisplayID?
+    private var ownsSidecarConnection = false
+    private var sidecarSessionDeviceName: String?
+    private(set) var isDisconnectingSidecar = false
+    @ObservationIgnored var requestPointerEventAccess: (() -> Bool)?
+    @ObservationIgnored var presentTabletSettingsForDisplayRecovery: (() -> Void)?
 
     private(set) var devices: [SidecarDevice] = []
     private(set) var connectedDeviceName: String?
     private(set) var isConnecting = false
     private(set) var problem: String?
+    private(set) var needsExtendedDisplayRecovery = false
+    var isDisplayRecoveryPopoverPresented = false
+    private(set) var targetDisplays: [TabletTargetDisplay] = []
+    private(set) var selectedTargetDisplayID: CGDirectDisplayID?
 
     var selectedDeviceName: String {
         didSet { defaults.set(selectedDeviceName, forKey: Key.selectedDevice) }
@@ -193,26 +231,46 @@ final class SidecarTabletModel {
             updateSurface()
         }
     }
-    private(set) var activeArea: TabletActiveArea {
-        didSet {
-            if let data = try? JSONEncoder().encode(activeArea) { defaults.set(data, forKey: Key.activeArea) }
-            updateSurface()
-        }
-    }
+    private(set) var activeArea: TabletActiveArea { didSet { updateSurface() } }
+    private(set) var savedActiveArea: TabletActiveArea
     var connectAtLaunch: Bool {
         didSet { defaults.set(connectAtLaunch, forKey: Key.connectAtLaunch) }
     }
+    var targetDisplayID: CGDirectDisplayID {
+        selectedTargetDisplayID ?? targetDisplays.first(where: \.isBuiltIn)?.id ?? CGMainDisplayID()
+    }
+    var targetDisplaySelection: Int {
+        get { Int(targetDisplayID) }
+        set {
+            let id = CGDirectDisplayID(newValue)
+            guard targetDisplays.contains(where: { $0.id == id }), selectedTargetDisplayID != id else { return }
+            selectedTargetDisplayID = id
+            defaults.set(newValue, forKey: Key.targetDisplay)
+        }
+    }
 
     var isConnected: Bool { connectedDeviceName != nil }
+    var isUsingExistingSidecarSession: Bool { isConnected && !ownsSidecarConnection }
+    var canDisconnectSidecarSession: Bool {
+        ownsSidecarConnection && sidecarSessionDeviceName != nil && !isDisconnectingSidecar
+    }
+    var hasUnsavedAreaChanges: Bool { activeArea != savedActiveArea }
     var supportsSidecarTouch: Bool {
         ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
     }
-    var canConnect: Bool { !isConnecting && !selectedDeviceName.isEmpty }
+    var canConnect: Bool {
+        !isConnected && !isConnecting && !isDisconnectingSidecar && !selectedDeviceName.isEmpty
+    }
     var statusText: String {
         if isConnecting { return "Connecting to Sidecar…" }
+        if isDisconnectingSidecar { return "Disconnecting from Sidecar…" }
         if let connectedDeviceName { return "Connected to \(connectedDeviceName)" }
         if let problem { return problem }
         return devices.isEmpty ? "No Sidecar iPads found" : "Ready to connect"
+    }
+    var displayRecoveryMessage: String {
+        let error = problem ?? "The iPad isn’t available as an extended display."
+        return "\(error)\n\nHitPad needs the iPad set to Extend Display. In System Settings > Displays, choose Extend Display for the iPad, then try again."
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -222,20 +280,30 @@ final class SidecarTabletModel {
         pencilContactClick = defaults.object(forKey: Key.pencilClick) as? Bool ?? true
         fingerInputEnabled = defaults.bool(forKey: Key.fingerInput)
         touchClick = defaults.object(forKey: Key.touchClick) as? Bool ?? true
+        let initialArea: TabletActiveArea
         if let data = defaults.data(forKey: Key.activeArea), let area = try? JSONDecoder().decode(TabletActiveArea.self, from: data) {
-            activeArea = area.bounded()
+            initialArea = area.roundedToTenthPercent()
         } else {
-            activeArea = .full
+            initialArea = .full
         }
+        activeArea = initialArea
+        savedActiveArea = initialArea
         connectAtLaunch = defaults.bool(forKey: Key.connectAtLaunch)
+        selectedTargetDisplayID = (defaults.object(forKey: Key.targetDisplay) as? NSNumber)?.uint32Value
     }
 
     func start() {
         refreshDevices()
+        refreshTargetDisplays()
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.sidecarDisplaysChanged() }
+        }
+        terminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.restoreSidecarCursor() }
         }
         guard connectAtLaunch else { return }
         if selectedDeviceName.isEmpty, devices.count == 1 { selectedDeviceName = devices[0].name }
@@ -243,7 +311,19 @@ final class SidecarTabletModel {
     }
 
     func setActiveArea(_ area: TabletActiveArea) {
-        activeArea = area.bounded()
+        let area = area.roundedToTenthPercent()
+        guard area != activeArea else { return }
+        activeArea = area
+    }
+
+    func saveActiveArea() {
+        guard hasUnsavedAreaChanges else { return }
+        savedActiveArea = activeArea
+        if let data = try? JSONEncoder().encode(savedActiveArea) { defaults.set(data, forKey: Key.activeArea) }
+    }
+
+    func restoreSavedActiveArea() {
+        setActiveArea(savedActiveArea)
     }
 
     func refreshDevices() {
@@ -252,12 +332,15 @@ final class SidecarTabletModel {
             if selectedDeviceName.isEmpty, devices.count == 1 { selectedDeviceName = devices[0].name }
             if !selectedDeviceName.isEmpty, !devices.contains(where: { $0.name == selectedDeviceName }) {
                 problem = "\(selectedDeviceName) isn’t currently available."
-            } else if !isConnected {
+                clearDisplayRecovery()
+            } else if !isConnected && !needsExtendedDisplayRecovery {
                 problem = nil
+                clearDisplayRecovery()
             }
         } catch {
             devices = []
             problem = error.localizedDescription
+            clearDisplayRecovery()
         }
     }
 
@@ -267,57 +350,215 @@ final class SidecarTabletModel {
     }
 
     func disconnect() {
-        let name = connectedDeviceName ?? selectedDeviceName
-        guard !name.isEmpty else { return }
+        guard let name = connectedDeviceName ?? sidecarSessionDeviceName else { return }
+        let shouldDisconnectSidecar = ownsSidecarConnection
         surfaceWindow?.close()
         surfaceWindow = nil
+        restoreSidecarCursor()
         connectedDeviceName = nil
+        guard shouldDisconnectSidecar else {
+            sidecarSessionDeviceName = nil
+            clearDisplayRecovery()
+            return
+        }
+        guard !isDisconnectingSidecar else { return }
+        isDisconnectingSidecar = true
+        clearDisplayRecovery()
         Task {
-            do { try await bridge.disconnect(name: name) }
-            catch { problem = error.localizedDescription }
+            defer { isDisconnectingSidecar = false }
+            do {
+                try await bridge.disconnect(name: name)
+                ownsSidecarConnection = false
+                sidecarSessionDeviceName = nil
+                problem = nil
+            } catch {
+                problem = error.localizedDescription
+            }
         }
     }
 
-    func openAccessibilitySettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
-        NSWorkspace.shared.open(url)
-    }
-
     private func connect(name: String) async {
-        guard AXIsProcessTrusted() else {
-            problem = "Sill needs Accessibility permission to control the Mac pointer."
-            openAccessibilitySettings()
-            return
+        guard !isConnected, !isDisconnectingSidecar else { return }
+        problem = nil
+        clearDisplayRecovery()
+        if !CGPreflightPostEventAccess() {
+            let requestReportedAccess = requestPointerEventAccess?() ?? CGRequestPostEventAccess()
+            guard CGPreflightPostEventAccess() else {
+                problem = requestReportedAccess
+                    ? "macOS reported access, but this HitPad build still cannot post pointer events. Replace its Accessibility entry with the currently running build, then click Connect again."
+                    : "This HitPad build cannot post pointer events. If HitPad is already enabled in Accessibility, its entry may belong to an older build."
+                return
+            }
         }
         isConnecting = true
         problem = nil
         defer { isConnecting = false }
+        let existingDisplayID = bridge.sidecarDisplayID()
+        var startedSidecarConnection = false
+        if let sessionName = sidecarSessionDeviceName, sessionName != name {
+            problem = "Sidecar is already open for \(sessionName). Disconnect it before connecting to \(name)."
+            return
+        }
+        if existingDisplayID != nil, sidecarSessionDeviceName == nil {
+            guard devices.count == 1, devices[0].name == name else {
+                problem = "An existing Sidecar display is active, but HitPad can’t identify its iPad. Disconnect it in Displays, then select an iPad and connect again."
+                return
+            }
+            ownsSidecarConnection = false
+            sidecarSessionDeviceName = name
+        }
         do {
-            try await bridge.connect(name: name)
-            guard let id = await waitForSidecarDisplayID() else {
-                try? await bridge.disconnect(name: name)
+            if existingDisplayID == nil {
+                try await bridge.connect(name: name)
+                startedSidecarConnection = true
+                ownsSidecarConnection = true
+                sidecarSessionDeviceName = name
+            }
+            let displayID: CGDirectDisplayID?
+            if let existingDisplayID {
+                displayID = existingDisplayID
+            } else {
+                displayID = await waitForSidecarDisplayID()
+            }
+            guard let id = displayID else {
+                if startedSidecarConnection, !(await releaseOwnedSidecarSession(named: name)) { return }
                 problem = "Sidecar connected, but the iPad display didn’t become available."
                 return
             }
             try bridge.extendDisplay(id)
+            guard CGDisplayIsInMirrorSet(id) == 0 else {
+                showDisplayRecovery("macOS kept the iPad in Mirror mode.")
+                return
+            }
             guard let screen = await waitForScreen(id: id) else {
-                try? await bridge.disconnect(name: name)
-                problem = "The iPad display didn’t become available in Extended Display mode."
+                let message = "The iPad display didn’t become available in Extended Display mode."
+                if CGDisplayIsInMirrorSet(id) != 0 {
+                    showDisplayRecovery(message)
+                } else {
+                    if startedSidecarConnection, !(await releaseOwnedSidecarSession(named: name)) { return }
+                    problem = message
+                }
+                return
+            }
+            guard CGDisplayIsInMirrorSet(id) == 0 else {
+                showDisplayRecovery("macOS kept the iPad in Mirror mode.")
                 return
             }
             surfaceWindow?.close()
             surfaceWindow = TabletSurfaceWindowController(screen: screen, model: self)
+            sidecarSessionDeviceName = name
             connectedDeviceName = name
             selectedDeviceName = name
             problem = nil
+            clearDisplayRecovery()
+            refreshTargetDisplays()
+            hideCursorOnSidecarDisplay(id)
+        } catch {
+            let requiresDisplayRecovery = (error as? SidecarError)?.requiresExtendedDisplay == true
+                || bridge.sidecarDisplayID().map({ CGDisplayIsInMirrorSet($0) != 0 }) == true
+            if requiresDisplayRecovery {
+                showDisplayRecovery(error.localizedDescription)
+            } else {
+                if startedSidecarConnection, !(await releaseOwnedSidecarSession(named: name)) { return }
+                problem = error.localizedDescription
+            }
+        }
+    }
+
+    private func releaseOwnedSidecarSession(named name: String) async -> Bool {
+        guard ownsSidecarConnection, sidecarSessionDeviceName == name else { return true }
+        do {
+            try await bridge.disconnect(name: name)
+            ownsSidecarConnection = false
+            sidecarSessionDeviceName = nil
+            return true
         } catch {
             problem = error.localizedDescription
+            return false
         }
+    }
+
+    func openDisplaysSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.Displays-Settings.extension") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func openMenuBarSettings() {
+        let majorVersion = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        let pane = majorVersion >= 26
+            ? "com.apple.ControlCenter-Settings.extension"
+            : "com.apple.controlcenter"
+        guard let url = URL(string: "x-apple.systempreferences:\(pane)") else { return }
+        if !NSWorkspace.shared.open(url),
+           let fallback = URL(string: "x-apple.systempreferences:com.apple.controlcenter") {
+            NSWorkspace.shared.open(fallback)
+        }
+    }
+
+    private func showDisplayRecovery(_ message: String) {
+        problem = message
+        needsExtendedDisplayRecovery = true
+        isDisplayRecoveryPopoverPresented = true
+        presentTabletSettingsForDisplayRecovery?()
+    }
+
+    private func clearDisplayRecovery() {
+        needsExtendedDisplayRecovery = false
+        isDisplayRecoveryPopoverPresented = false
+    }
+
+    private func refreshTargetDisplays() {
+        let sidecarID = bridge.sidecarDisplayID()
+        let displays = NSScreen.screens.compactMap { screen -> TabletTargetDisplay? in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return nil
+            }
+            let id = CGDirectDisplayID(number.uint32Value)
+            guard id != sidecarID else { return nil }
+            return TabletTargetDisplay(id: id, name: screen.localizedName, isBuiltIn: CGDisplayIsBuiltin(id) != 0)
+        }.sorted { lhs, rhs in
+            if lhs.isBuiltIn != rhs.isBuiltIn { return lhs.isBuiltIn }
+            let lhsIsMain = lhs.id == CGMainDisplayID()
+            let rhsIsMain = rhs.id == CGMainDisplayID()
+            if lhsIsMain != rhsIsMain { return lhsIsMain }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+        targetDisplays = displays
+
+        if let selectedTargetDisplayID, displays.contains(where: { $0.id == selectedTargetDisplayID }) { return }
+        let savedID = (defaults.object(forKey: Key.targetDisplay) as? NSNumber)?.uint32Value
+        let preferredID = savedID.flatMap { id in displays.contains(where: { $0.id == id }) ? id : nil }
+            ?? displays.first(where: \.isBuiltIn)?.id
+            ?? displays.first(where: { $0.id == CGMainDisplayID() })?.id
+            ?? displays.first?.id
+        selectedTargetDisplayID = preferredID
+        if let preferredID { defaults.set(Int(preferredID), forKey: Key.targetDisplay) }
+        else { defaults.removeObject(forKey: Key.targetDisplay) }
+    }
+
+    private func hideCursorOnSidecarDisplay(_ id: CGDirectDisplayID) {
+        guard hiddenCursorDisplayID != id else { return }
+        restoreSidecarCursor()
+        guard hiddenCursorDisplayID == nil else { return }
+        guard CGDisplayHideCursor(id) == .success else {
+            problem = "macOS couldn’t hide the cursor on the iPad display."
+            return
+        }
+        hiddenCursorDisplayID = id
+    }
+
+    private func restoreSidecarCursor() {
+        guard let id = hiddenCursorDisplayID else { return }
+        guard CGDisplayShowCursor(id) == .success else {
+            problem = "macOS couldn’t restore the cursor on the iPad display."
+            return
+        }
+        hiddenCursorDisplayID = nil
     }
 
     private func waitForSidecarDisplayID() async -> CGDirectDisplayID? {
         for _ in 0..<50 {
-            if let id = bridge.displayID() { return id }
+            if let id = bridge.sidecarDisplayID() { return id }
             try? await Task.sleep(for: .milliseconds(200))
         }
         return nil
@@ -338,16 +579,47 @@ final class SidecarTabletModel {
     }
 
     private func sidecarDisplaysChanged() {
-        guard let connectedDeviceName else { return }
-        guard let id = bridge.displayID(), let screen = screen(for: id) else {
+        refreshTargetDisplays()
+        guard let connectedDeviceName else {
+            restoreSidecarCursor()
+            if needsExtendedDisplayRecovery,
+               let id = bridge.sidecarDisplayID(),
+               CGDisplayIsInMirrorSet(id) == 0,
+               screen(for: id) != nil {
+                problem = nil
+                clearDisplayRecovery()
+            }
+            return
+        }
+        guard let id = bridge.sidecarDisplayID() else {
+            restoreSidecarCursor()
             surfaceWindow?.close()
             surfaceWindow = nil
             self.connectedDeviceName = nil
+            ownsSidecarConnection = false
+            sidecarSessionDeviceName = nil
             problem = "The Sidecar display disconnected."
+            return
+        }
+        if CGDisplayIsInMirrorSet(id) != 0 {
+            restoreSidecarCursor()
+            surfaceWindow?.close()
+            surfaceWindow = nil
+            self.connectedDeviceName = nil
+            showDisplayRecovery("The iPad switched to Mirror mode, so tablet mapping stopped.")
+            return
+        }
+        guard let screen = screen(for: id) else {
+            restoreSidecarCursor()
+            surfaceWindow?.close()
+            surfaceWindow = nil
+            self.connectedDeviceName = nil
+            problem = "The iPad display is unavailable, so tablet mapping stopped."
             return
         }
         surfaceWindow?.move(to: screen)
         self.connectedDeviceName = connectedDeviceName
+        hideCursorOnSidecarDisplay(id)
     }
 
     private func updateSurface() {
@@ -405,6 +677,8 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     private var touchClick = true
     private var lastTouchPoint: CGPoint?
     private var lastPointerPoint: CGPoint?
+    private var pencilButtonIsDown = false
+    private var rightButtonIsDown = false
     private var tracking: NSTrackingArea?
 
     init(frame: NSRect, model: SidecarTabletModel) {
@@ -440,8 +714,13 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
 
     func apply(mode: TabletMappingMode, activeArea: TabletActiveArea, pencilClick: Bool,
                fingerInputEnabled: Bool, touchClick: Bool) {
+        let nextArea = activeArea.bounded()
+        if self.mode != mode || self.activeArea != nextArea {
+            lastPointerPoint = nil
+            lastTouchPoint = nil
+        }
         self.mode = mode
-        self.activeArea = activeArea.bounded()
+        self.activeArea = nextArea
         self.pencilClick = pencilClick
         self.fingerInputEnabled = fingerInputEnabled
         self.touchClick = touchClick
@@ -480,18 +759,27 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
 
     override func mouseMoved(with event: NSEvent) { route(event.locationInWindow) }
     override func mouseDown(with event: NSEvent) {
-        route(event.locationInWindow)
-        if pencilClick { router.click(down: true) }
+        guard route(event.locationInWindow) else { return }
+        guard pencilClick else { return }
+        router.click(down: true)
+        pencilButtonIsDown = true
     }
     override func mouseUp(with event: NSEvent) {
-        if pencilClick { router.click(down: false) }
+        guard pencilButtonIsDown else { return }
+        router.click(down: false)
+        pencilButtonIsDown = false
     }
     override func mouseDragged(with event: NSEvent) { route(event.locationInWindow) }
     override func rightMouseDown(with event: NSEvent) {
-        route(event.locationInWindow)
+        guard route(event.locationInWindow) else { return }
         router.rightClick(down: true)
+        rightButtonIsDown = true
     }
-    override func rightMouseUp(with event: NSEvent) { router.rightClick(down: false) }
+    override func rightMouseUp(with event: NSEvent) {
+        guard rightButtonIsDown else { return }
+        router.rightClick(down: false)
+        rightButtonIsDown = false
+    }
 
     func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer, shouldReceive touch: NSTouch) -> Bool {
         fingerInputEnabled && touch.type == .direct
@@ -513,17 +801,30 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
         let point = recognizer.location(in: self)
         switch recognizer.state {
         case .began:
-            lastTouchPoint = point
-            route(point)
-        case .changed:
-            if mode == .relative, let lastTouchPoint {
-                router.moveRelative(dx: point.x - lastTouchPoint.x, dy: lastTouchPoint.y - point.y, surfaceSize: bounds.size)
+            lastPointerPoint = nil
+            if isInsideActiveArea(point) {
+                lastTouchPoint = point
+                if mode == .absolute { routeLocal(point) }
             } else {
-                route(point)
+                lastTouchPoint = nil
+            }
+        case .changed:
+            guard isInsideActiveArea(point) else {
+                lastTouchPoint = nil
+                return
+            }
+            if mode == .relative, let lastTouchPoint {
+                router.moveRelative(dx: point.x - lastTouchPoint.x,
+                                    dy: lastTouchPoint.y - point.y,
+                                    surfaceSize: trackpadSurfaceSize,
+                                    displayID: targetDisplayID)
+            } else {
+                if mode == .absolute { routeLocal(point) }
             }
             lastTouchPoint = point
         case .ended, .cancelled, .failed:
             lastTouchPoint = nil
+            lastPointerPoint = nil
         default: break
         }
     }
@@ -531,27 +832,60 @@ private final class SidecarTabletInputView: NSView, NSGestureRecognizerDelegate 
     @objc private func directTouchTap(_ recognizer: NSClickGestureRecognizer) {
         guard fingerInputEnabled, recognizer.state == .ended else { return }
         let point = recognizer.location(in: self)
-        route(point)
+        guard isInsideActiveArea(point) else { return }
+        if mode == .absolute {
+            routeLocal(point)
+        } else {
+            // A trackpad tap clicks at the current pointer location; it should not jump to
+            // the tap position or reuse a stale Pencil position as the next movement origin.
+            lastPointerPoint = nil
+        }
         guard touchClick else { return }
         router.click(down: true)
         router.click(down: false)
     }
 
-    private func route(_ windowPoint: NSPoint) {
-        let local = convert(windowPoint, from: nil)
+    @discardableResult
+    private func route(_ windowPoint: NSPoint) -> Bool {
+        routeLocal(convert(windowPoint, from: nil))
+    }
+
+    @discardableResult
+    private func routeLocal(_ local: NSPoint) -> Bool {
         let u = local.x / max(bounds.width, 1)
         let v = 1 - local.y / max(bounds.height, 1)
+        guard let normalized = activeArea.normalized(CGPoint(x: u, y: v)) else {
+            lastPointerPoint = nil
+            return false
+        }
         if mode == .absolute {
-            guard let normalized = activeArea.normalized(CGPoint(x: u, y: v)) else { return }
-            router.moveAbsolute(normalized: normalized)
+            router.moveAbsolute(normalized: normalized, displayID: targetDisplayID)
+            lastPointerPoint = nil
         } else {
             if let lastPointerPoint {
                 router.moveRelative(dx: local.x - lastPointerPoint.x,
                                     dy: lastPointerPoint.y - local.y,
-                                    surfaceSize: bounds.size)
+                                    surfaceSize: trackpadSurfaceSize,
+                                    displayID: targetDisplayID)
             }
+            lastPointerPoint = local
         }
-        lastPointerPoint = local
+        return true
+    }
+
+    private func isInsideActiveArea(_ local: CGPoint) -> Bool {
+        let u = local.x / max(bounds.width, 1)
+        let v = 1 - local.y / max(bounds.height, 1)
+        return activeArea.normalized(CGPoint(x: u, y: v)) != nil
+    }
+
+    private var trackpadSurfaceSize: CGSize {
+        CGSize(width: bounds.width * activeArea.width,
+               height: bounds.height * activeArea.height)
+    }
+
+    private var targetDisplayID: CGDirectDisplayID {
+        model?.targetDisplayID ?? CGMainDisplayID()
     }
 }
 
@@ -560,34 +894,36 @@ private final class SidecarPointerRouter {
     private let source = CGEventSource(stateID: .hidSystemState)
     private var lastLocation: CGPoint?
 
-    func moveAbsolute(normalized: CGPoint) {
-        let display = CGMainDisplayID()
-        let bounds = CGDisplayBounds(display)
-        let point = CGPoint(x: bounds.minX + normalized.x * bounds.width,
-                            y: bounds.minY + normalized.y * bounds.height)
+    func moveAbsolute(normalized: CGPoint, displayID: CGDirectDisplayID) {
+        let bounds = CGDisplayBounds(displayID)
+        let point = CGPoint(x: bounds.minX + normalized.x * max(bounds.width - 1, 0),
+                            y: bounds.minY + normalized.y * max(bounds.height - 1, 0))
         post(.mouseMoved, point: point, button: .left)
     }
 
-    func moveRelative(dx: CGFloat, dy: CGFloat, surfaceSize: CGSize) {
-        guard surfaceSize.width > 0, surfaceSize.height > 0,
-              let current = CGEvent(source: nil)?.location else { return }
-        let display = CGDisplayBounds(CGMainDisplayID())
-        let point = CGPoint(x: min(max(current.x + dx / surfaceSize.width * display.width * 1.25, display.minX), display.maxX - 1),
-                            y: min(max(current.y + dy / surfaceSize.height * display.height * 1.25, display.minY), display.maxY - 1))
+    func moveRelative(dx: CGFloat, dy: CGFloat, surfaceSize: CGSize, displayID: CGDirectDisplayID) {
+        guard surfaceSize.width > 0, surfaceSize.height > 0 else { return }
+        let bounds = CGDisplayBounds(displayID)
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let cursor = current()
+        let origin = bounds.contains(cursor) ? cursor : CGPoint(x: bounds.midX, y: bounds.midY)
+        let point = CGPoint(x: min(max(origin.x + dx / surfaceSize.width * bounds.width * 1.25, bounds.minX), bounds.maxX - 1),
+                            y: min(max(origin.y + dy / surfaceSize.height * bounds.height * 1.25, bounds.minY), bounds.maxY - 1))
         post(.mouseMoved, point: point, button: .left)
     }
 
     func click(down: Bool) { post(down ? .leftMouseDown : .leftMouseUp, point: current(), button: .left) }
     func rightClick(down: Bool) { post(down ? .rightMouseDown : .rightMouseUp, point: current(), button: .right) }
 
-    private func current() -> CGPoint { CGEvent(source: nil)?.location ?? lastLocation ?? .zero }
+    private func current() -> CGPoint { lastLocation ?? CGEvent(source: nil)?.location ?? .zero }
 
     private func post(_ type: CGEventType, point: CGPoint, button: CGMouseButton) {
+        // Cursor warping alone can make motion look successful while the event server rejects
+        // clicks. Check the actual event-posting grant before either action, including mid-session.
+        guard CGPreflightPostEventAccess() else { return }
         guard let event = CGEvent(mouseEventSource: source, mouseType: type,
                                   mouseCursorPosition: point, mouseButton: button) else { return }
         lastLocation = point
         event.post(tap: .cghidEventTap)
-        // Keep the visible cursor aligned with synthetic Sidecar input events.
-        _ = CGWarpMouseCursorPosition(point)
     }
 }

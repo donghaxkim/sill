@@ -29,7 +29,7 @@ struct MenuEntry: Equatable {
         /// "‹device› Wants to Pair": the window that shows its code brought forward, else one
         /// opened on the Mac, asked by that device.
         case showPairingRequest(name: String, showing: Bool)
-        /// Sill 0.4 Is Available…: the release's page on GitHub, in the browser (UpdateChecker).
+        /// HitPad 0.4 Is Available…: the release's page on GitHub, in the browser (UpdateChecker).
         case openUpdate(URL)
     }
 
@@ -59,9 +59,9 @@ struct LoginState: Equatable {
 /// The status menu, top to bottom. Titles are title case, subtitles sentence case. The controls
 /// mirror the Settings window and only ever set the app's settings.
 enum MenuBuilder {
-    /// `update`: a newer release the update check found, and this Sill's version: one item right
+    /// `update`: a newer release the update check found, and this HitPad's version: one item right
     /// after the card and anything needing attention. The glyph never changes for it: the attention
-    /// glyph means Sill needs the person before it can work, and an update needs nothing.
+    /// glyph means HitPad needs the person before it can work, and an update needs nothing.
     static func entries(presentation p: StatusPresentation, config: HostConfig, login: LoginState,
                         permissions: PermissionState,
                         update: (offer: UpdatePolicy.Offer, running: SillVersion)? = nil) -> [MenuEntry] {
@@ -113,7 +113,7 @@ enum MenuBuilder {
                               checked: config.sendAudio, action: .setSendAudio(!config.sendAudio)))
         menu.append(.separator)
 
-        // How Sill runs on this Mac, not the picture: devices reach it over peer-to-peer Wi-Fi too.
+        // How HitPad runs on this Mac, not the picture: devices reach it over peer-to-peer Wi-Fi too.
         // Here as well as in Settings because it is situational (on in a café, off at home).
         menu.append(MenuEntry(kind: .item, title: "Direct Wireless Connection",
                               subtitle: "No shared network needed; Wi\u{2011}Fi streams can stutter",
@@ -124,9 +124,9 @@ enum MenuBuilder {
             menu.append(MenuEntry(kind: .item, title: "Remote Access…", subtitle: note, action: .showSettingsTab(.remoteAccess)))
         }
         var loginNote: String?
-        if !login.available { loginNote = "Available when Sill runs from its app bundle" }
+        if !login.available { loginNote = "Available when HitPad runs from its app bundle" }
         else if let error = login.error { loginNote = error }
-        else if login.needsApproval { loginNote = "Approve Sill in System Settings › Login Items" }
+        else if login.needsApproval { loginNote = "Approve HitPad in System Settings › Login Items" }
         menu.append(MenuEntry(kind: .item, title: "Launch at Login", subtitle: loginNote, checked: login.on,
                               enabled: login.available, action: .toggleLaunchAtLogin))
         menu.append(MenuEntry(kind: .item, title: "Permissions", children: [
@@ -149,7 +149,7 @@ enum MenuBuilder {
                               action: .showSettingsTab(.tablet)))
         menu.append(MenuEntry(kind: .item, title: "Settings…", key: ",", action: .showSettings))
         menu.append(.separator)
-        menu.append(MenuEntry(kind: .item, title: "Quit Sill", key: "q", action: .quit))
+        menu.append(MenuEntry(kind: .item, title: "Quit HitPad", key: "q", action: .quit))
         return menu
     }
 
@@ -164,6 +164,8 @@ enum MenuBuilder {
         if tablet.isConnected {
             menu.append(MenuEntry(kind: .item, title: "Disconnect from \(tablet.connectedDeviceName ?? "iPad")",
                                   action: .disconnectTablet))
+        } else if tablet.canDisconnectSidecarSession {
+            menu.append(MenuEntry(kind: .item, title: "Disconnect Sidecar", action: .disconnectTablet))
         } else if tablet.canConnect {
             menu.append(MenuEntry(kind: .item, title: "Connect to \(tablet.selectedDeviceName)", action: .connectTablet))
         } else {

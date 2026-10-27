@@ -54,7 +54,7 @@ struct LiveTabletStatusCard: View {
                     .font(.headline)
                 Text(tablet.statusText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(tablet.isConnected ? .green : .secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

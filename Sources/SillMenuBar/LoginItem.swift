@@ -7,7 +7,7 @@ import ServiceManagement
 /// when the menu opens and while a pane that shows it is on screen. Never switched on by itself.
 ///
 /// The login item records the bundle's path, so it follows the copy that registered it: keep one
-/// copy of Sill, in /Applications (Scripts/make-app.sh --install).
+/// copy of HitPad, in /Applications (Scripts/make-app.sh --install).
 @MainActor @Observable
 final class LoginItemModel {
     private(set) var status: SMAppService.Status = .notRegistered

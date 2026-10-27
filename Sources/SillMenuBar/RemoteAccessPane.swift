@@ -60,10 +60,10 @@ struct RemoteAccessPane: View {
                 if let problem = status.identityProblem {
                     // The system's messages end with a full stop of their own.
                     let reason = problem.hasSuffix(".") ? String(problem.dropLast()) : problem
-                    Warning("Remote access isn’t available: Sill couldn’t use the keychain (\(reason)).")
+                    Warning("Remote access isn’t available: HitPad couldn’t use the keychain (\(reason)).")
                 }
             } footer: {
-                Footnote("Lets the iPhone and iPad you pair connect to this Mac from other networks: through a VPN such as Tailscale, or through a port you forward on your router. Sill turns away every device you haven’t paired, and encrypts everything the paired ones send and receive.")
+                Footnote("Lets the iPhone and iPad you pair connect to this Mac from other networks: through a VPN such as Tailscale, or through a port you forward on your router. HitPad turns away every device you haven’t paired, and encrypts everything the paired ones send and receive.")
             }
             if on { addresses }
             pairedDevices
@@ -73,7 +73,7 @@ struct RemoteAccessPane: View {
                     Button("Open Energy Settings…") { Self.openEnergySettings() }
                 } label: {
                     Text("Sleep")
-                    Text("This Mac can’t be reached while it’s asleep. While a device is connected from away, Sill keeps it from going to sleep by itself.")
+                    Text("This Mac can’t be reached while it’s asleep. While a device is connected from away, HitPad keeps it from going to sleep by itself.")
                 }
             }
         }
@@ -89,10 +89,10 @@ struct RemoteAccessPane: View {
                 LabeledContent {
                     Button("Change…") { startEditingPort() }
                 } label: {
-                    Warning("Port \(p) is in use by another app, so devices can’t reach this Mac remotely. Sill tries again every 30 seconds.")
+                    Warning("Port \(p) is in use by another app, so devices can’t reach this Mac remotely. HitPad tries again every 30 seconds.")
                 }
             case .failed(let error):
-                Warning("Remote access couldn’t start (\(error)). Sill tries again every 30 seconds.")
+                Warning("Remote access couldn’t start (\(error)). HitPad tries again every 30 seconds.")
             case .off, .listening:
                 EmptyView()
             }
@@ -247,7 +247,7 @@ struct RemoteAccessPane: View {
             Text("Internet")
         } footer: {
             if internetAccess {
-                Footnote("Anyone on the internet can now reach port \(String(port)) and try to connect. Sill turns away every device you haven’t paired. Turning this off doesn’t close the port on your router: remove the forward there too.")
+                Footnote("Anyone on the internet can now reach port \(String(port)) and try to connect. HitPad turns away every device you haven’t paired. Turning this off doesn’t close the port on your router: remove the forward there too.")
             } else {
                 Footnote("Only needed for a port forward on your router. A VPN is simpler and keeps this Mac off the open internet.")
             }

@@ -5,19 +5,19 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>iPad as Tablet</string>
+	<string>HitPad</string>
 	<key>CFBundleExecutable</key>
-	<string>Sill</string>
+	<string>HitPad</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>me.saffer.sill.mac</string>
+	<string>com.github.donghaxkim.hitpad</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>iPad as Tablet</string>
+	<string>HitPad</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -35,11 +35,11 @@
 		<string>_sill._tcp</string>
 	</array>
 	<key>NSHumanReadableCopyright</key>
-	<string>iPad as Tablet is free and open source.</string>
+	<string>HitPad is free and open source.</string>
 	<key>NSIsTouchNative</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sill makes this Mac visible to your iPhone and iPad on the same network so they can stream its windows.</string>
+	<string>HitPad makes this Mac visible to your iPhone and iPad on the same network so they can connect to it.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

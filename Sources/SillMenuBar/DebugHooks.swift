@@ -9,7 +9,7 @@ import StreamProtocol
 ///     --synthetic                              the Desktop is a test pattern and nothing is
 ///                                              advertised, as with the CLI (test clients connect
 ///                                              to the port in the "Status: Test Pattern Mode" line)
-///     -SillLogFile <path>                      log file instead of ~/Library/Logs/Sill/Sill.log
+///     -SillLogFile <path>                      log file instead of ~/Library/Logs/HitPad/HitPad.log
 ///     -SillSetAfter '<s> key=value[,key=value][; <s> …]'
 ///                                              change settings s seconds after launch, exactly as
 ///                                              a control would (maxFPS, captureScale, bitrate,
@@ -77,12 +77,12 @@ import StreamProtocol
 ///                                              exit (no Screen Recording needed: views render
 ///                                              offscreen; no identity is loaded, no listener)
 ///
-/// These are the bare SillMenuBar binary's (defaults domain "SillMenuBar"; delete it after). Sill.app
-/// itself, an app bundle's executable, ignores every `-Sill…After` hook and `-requirePairing`, each
+/// These are the bare SillMenuBar binary's (defaults domain "SillMenuBar"; delete it after). HitPad.app
+/// itself, an app bundle's executable, ignores every `-HitPad…After` hook and `-requirePairing`, each
 /// with one line (docs/home-pairing-plan.md §6.6): they open, answer or remove pairings, or change
-/// what the doors admit, and any process of this user can start Sill.app with arguments, which then
-/// runs with Sill's Screen Recording and Accessibility grants. `-SillTestScreenHeight` and
-/// `-SillSettingsShot` go with `-SillSettingsAfter` and are ignored the same way: Sill.app has no
+/// what the doors admit, and any process of this user can start HitPad.app with arguments, which then
+/// runs with HitPad's Screen Recording and Accessibility grants. `-SillTestScreenHeight` and
+/// `-SillSettingsShot` go with `-SillSettingsAfter` and are ignored the same way: HitPad.app has no
 /// use for them. `--synthetic`, `-SillLogFile`,
 /// `-SillRenderPreviews` and the update check's `-SillUpdateFeed`, `-SillUpdateNow`,
 /// `-SillUpdateVersion` and `-SillUpdateInterval` stay: they bear on no door and no pairing (a feed
@@ -102,18 +102,18 @@ enum DebugHooks {
         }
         let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
-        return library.appendingPathComponent("Logs/Sill/Sill.log")
+        return library.appendingPathComponent("Logs/HitPad/HitPad.log")
     }
 
-    /// The timed hooks, which Sill.app itself ignores.
+    /// The timed hooks, which HitPad.app itself ignores.
     static let timedHooks = ["SillSetAfter", "SillPairAfter", "SillCancelPairingAfter", "SillUnpairAfter",
                              "SillCableNoticeAfter", "SillMenuAfter", "SillPrintMenuAfter", "SillSettingsAfter", "SillQuitAfter"]
-    /// The Settings window's test arguments (issue #59), which Sill.app itself ignores too.
+    /// The Settings window's test arguments (issue #59), which HitPad.app itself ignores too.
     static let windowHooks = ["SillTestScreenHeight", "SillSettingsShot"]
 
     /// TEST ONLY (-SillTestScreenHeight <points>, and -SillSettingsAfter's height=): the Settings
     /// window fits the top <points> of its screen's visible frame (SettingsWindowFit.visible). Nil in
-    /// Sill.app itself, and without it.
+    /// HitPad.app itself, and without it.
     static var testScreenHeight: CGFloat? = {
         guard !AppModel.bundled else { return nil }
         let h = UserDefaults.standard.double(forKey: "SillTestScreenHeight")
@@ -148,12 +148,12 @@ enum DebugHooks {
         return c
     }
 
-    /// The timed hooks, counted from now (launch). In Sill.app, one line for each that was given.
+    /// The timed hooks, counted from now (launch). In HitPad.app, one line for each that was given.
     static func schedule(model: AppModel) {
         let defaults = UserDefaults.standard
         if AppModel.bundled {
             for name in timedHooks + windowHooks where defaults.object(forKey: name) != nil {
-                print("-\(name) ignored: Sill.app itself takes no test hook (use the bare SillMenuBar binary).")
+                print("-\(name) ignored: HitPad.app itself takes no test hook (use the bare SillMenuBar binary).")
             }
             return
         }
@@ -545,7 +545,7 @@ enum DebugHooks {
 
     private static func samples() -> [Sample] {
         var list = localSamples()
-        // Sill.app always has remote access: every menu shows its two items (off here).
+        // HitPad.app always has remote access: every menu shows its two items (off here).
         for i in list.indices { list[i].snapshot.remote = RemoteStatus() }
         // One device from away: its card names the remote route, never a link word.
         var remote = list.first { $0.name == "streaming" }?.snapshot ?? HostStatusSnapshot()
@@ -592,7 +592,7 @@ enum DebugHooks {
         list.append(Sample(name: "older-device", snapshot: home { $0.olderDeviceAt = previewNow.addingTimeInterval(-90) }))
         var closed = HostStatusSnapshot()
         closed.remote = RemoteStatus(identityProblem: keychainProblem,
-                                     homeDoor: .unavailable("Sill couldn’t use its key in the keychain (\(keychainProblem))"))
+                                     homeDoor: .unavailable("HitPad couldn’t use its key in the keychain (\(keychainProblem))"))
         list.append(Sample(name: "devices-cant-connect", snapshot: closed))
         return list
     }
@@ -724,9 +724,9 @@ enum DebugHooks {
 // MARK: Update check previews
 
 extension DebugHooks {
-    /// Sill 0.4, found by a check, against a running 0.3.
+    /// HitPad 0.4, found by a check, against a running 0.3.
     static let previewOffer = UpdatePolicy.Offer(version: SillVersion("0.4.0")!, tag: "v0.4.0",
-                                                 url: URL(string: "https://github.com/Saffsanity/sill/releases/tag/v0.4.0")!)
+                                                 url: URL(string: "https://github.com/donghaxkim/sill/releases/tag/v0.4.0")!)
 
     struct UpdatePaneSample {
         var name: String
@@ -803,7 +803,7 @@ extension DebugHooks {
             DevicesPaneSample(name: "empty", status: RemoteStatus(homeDoor: .pairingRequired)),
             DevicesPaneSample(name: "unavailable",
                               status: RemoteStatus(identityProblem: keychainProblem,
-                                                   homeDoor: .unavailable("Sill couldn’t use its key in the keychain (\(keychainProblem))"))),
+                                                   homeDoor: .unavailable("HitPad couldn’t use its key in the keychain (\(keychainProblem))"))),
         ]
     }
 

@@ -3,7 +3,7 @@ import Observation
 import SillHostCore
 
 /// The app's settings: the host's knobs (`config`) and a few facts the UI remembers, all in
-/// UserDefaults (the bundle's domain, me.saffer.sill.mac; the bare SillMenuBar binary's is
+/// UserDefaults (the bundle's domain, com.github.donghaxkim.hitpad; the bare SillMenuBar binary's is
 /// "SillMenuBar"). Main actor, like everything that shows or changes them.
 ///
 /// One path to the host: the menu, the Settings panes, the debug hooks and connected devices (through
@@ -42,6 +42,7 @@ final class HostSettings {
         static let remoteAddressName = "remoteAddressName", remoteDevicesSeen = "remoteDevicesSeen"
         static let settingsTab = "settingsTab", permissionsOnboardingDismissed = "permissionsOnboardingDismissed"
         static let askedScreenRecording = "askedScreenRecording", askedAccessibility = "askedAccessibility"
+        static let askedPointerEventPosting = "askedPointerEventPosting"
         static let logShowsStats = "logShowsStats"
         static let updateCheck = "updateCheck"
         static let shareClipboard = "shareClipboard"
@@ -60,12 +61,13 @@ final class HostSettings {
 
     /// The Settings tab shown last, reopened next time.
     var settingsTab: SettingsTab { didSet { defaults.set(settingsTab.rawValue, forKey: Key.settingsTab) } }
-    /// The user closed the onboarding Settings window while a permission was still missing: later
-    /// launches (a login item, say) only mark the status item. Cleared once both are allowed.
+    /// The user closed the onboarding Settings window while pointer event posting was still missing:
+    /// later launches only mark the status item. Cleared once the tablet input grant is allowed.
     var permissionsOnboardingDismissed: Bool { didSet { defaults.set(permissionsOnboardingDismissed, forKey: Key.permissionsOnboardingDismissed) } }
     /// The system's permission alerts appear once per app; after that, Allow… opens System Settings.
     var askedScreenRecording: Bool { didSet { defaults.set(askedScreenRecording, forKey: Key.askedScreenRecording) } }
     var askedAccessibility: Bool { didSet { defaults.set(askedAccessibility, forKey: Key.askedAccessibility) } }
+    var askedPointerEventPosting: Bool { didSet { defaults.set(askedPointerEventPosting, forKey: Key.askedPointerEventPosting) } }
     /// The Log window shows the once-a-second stats and client lines.
     var logShowsStats: Bool { didSet { defaults.set(logShowsStats, forKey: Key.logShowsStats) } }
     /// The router's dynamic DNS name for the internet switch ("home.example.net", or with ":port"
@@ -141,6 +143,7 @@ final class HostSettings {
         permissionsOnboardingDismissed = defaults.bool(forKey: Key.permissionsOnboardingDismissed)
         askedScreenRecording = defaults.bool(forKey: Key.askedScreenRecording)
         askedAccessibility = defaults.bool(forKey: Key.askedAccessibility)
+        askedPointerEventPosting = defaults.bool(forKey: Key.askedPointerEventPosting)
         logShowsStats = defaults.bool(forKey: Key.logShowsStats)
     }
 

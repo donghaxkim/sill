@@ -13,7 +13,7 @@ final class AppModel {
     let permissions: PermissionsModel
     let tablet = SidecarTabletModel()
     let loginItem = LoginItemModel()
-    /// The update check (GitHub's releases feed): the menu's "Sill 0.4 Is Available…" and Settings ›
+    /// The update check (GitHub's releases feed): the menu's "HitPad 0.4 Is Available…" and Settings ›
     /// General's section. Started once the host has started, or could not.
     let updates: UpdateChecker
     /// `--synthetic`: the Desktop streams a test pattern and the host stays off Bonjour, exactly
@@ -37,8 +37,8 @@ final class AppModel {
         var reason: String
     }
 
-    /// Sill.app itself, not the bare SillMenuBar binary: an app bundle's executable, which runs with
-    /// Sill's Screen Recording and Accessibility grants. It honours no TEST ONLY variable or `-Sill…After`
+    /// HitPad.app itself, not the bare SillMenuBar binary: an app bundle's executable, which runs with
+    /// HitPad's Screen Recording and Accessibility grants. It honours no TEST ONLY variable or `-HitPad…After`
     /// hook that bears on who gets in or what pairing needs (docs/home-pairing-plan.md §4.3, §6.6):
     /// any process of this user can start it with an environment and arguments.
     nonisolated static let bundled = Bundle.main.bundleURL.pathExtension == "app"
@@ -69,7 +69,8 @@ final class AppModel {
     init() {
         let settings = HostSettings()
         self.settings = settings
-        permissions = PermissionsModel(settings: settings)
+        let permissions = PermissionsModel(settings: settings)
+        self.permissions = permissions
         let updates = UpdateChecker(configuration: DebugHooks.updateConfiguration(testPattern: CommandLine.arguments.contains("--synthetic")),
                                     automatic: settings.updateCheck)
         self.updates = updates
@@ -80,6 +81,9 @@ final class AppModel {
         presentation = StatusText.present(snapshot: HostStatusSnapshot(),
                                           permissions: PermissionState(screenRecording: true, accessibility: true),
                                           startupError: nil, hasCoordinator: false)
+        tablet.requestPointerEventAccess = { [weak permissions] in
+            permissions?.requestPointerEventPosting() ?? false
+        }
     }
 
     static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev" }
@@ -101,7 +105,7 @@ final class AppModel {
                 // unavailable, not the app (docs/home-pairing-plan.md §6.1).
                 let remote = makeRemoteAccess()
                 settings.config.requirePairing = launchRequirePairing(remote)
-                // The window lists carry this Sill's version, when it has one (the bare binary's
+                // The window lists carry this HitPad's version, when it has one (the bare binary's
                 // "dev" does not parse): later devices can tell which Mac to update.
                 let c = try StreamCoordinator(config: settings.config, synthetic: synthetic, appKitLoop: true, remote: remote,
                                               homePairing: true, testHooks: !Self.bundled,
@@ -127,13 +131,13 @@ final class AppModel {
                 settings.onAddressNameChange = { [settings, weak remote] in remote?.setAddressName(settings.remoteAddressName) }
                 await c.start(preselect: nil, promptForPermissions: false)
                 Stats.shared.startPrinting()
-                print("Sill \(Self.version) (\(Self.build)) running from \(Bundle.main.bundlePath); log file \(HostLog.shared.fileURL?.path ?? "none")")
+                print("HitPad \(Self.version) (\(Self.build)) running from \(Bundle.main.bundlePath); log file \(HostLog.shared.fileURL?.path ?? "none")")
                 onboardIfNeeded()
             } catch {
                 startupError = "\(error)"
-                print("Sill couldn’t start: \(error)")
+                print("HitPad couldn’t start: \(error)")
             }
-            // Never before the host is up, and also when it could not start: a newer Sill may be the fix.
+            // Never before the host is up, and also when it could not start: a newer HitPad may be the fix.
             startUpdates()
         }
     }
@@ -150,15 +154,15 @@ final class AppModel {
 
     // MARK: Pairing and remote access
 
-    /// The Mac's identity and trust list, and Require pairing beside them: a keychain in Sill.app,
+    /// The Mac's identity and trust list, and Require pairing beside them: a keychain in HitPad.app,
     /// picked by IdentityStorePlan (docs/keychain-plan.md). An entitled Developer ID build (a
     /// provisioning profile embedded, so it holds a `keychain-access-groups` entitlement) uses the
     /// data-protection keychain, which no other process can pre-create or read; any other real
-    /// Sill.app — a development build, or a release with no profile — uses the legacy login keychain.
+    /// HitPad.app — a development build, or a release with no profile — uses the legacy login keychain.
     /// A test never touches a keychain: `--synthetic` keeps them in memory, and so does the bare
     /// SillMenuBar binary, whose ad hoc signature changes with every build. TEST ONLY: the bare
     /// binary with `--synthetic` (a test host) keeps them in SILL_TEST_REMOTE_DIR (a 0700 directory)
-    /// instead; a real Sill.app ignores it with a line (a caller could hand it a trust list of its
+    /// instead; a real HitPad.app ignores it with a line (a caller could hand it a trust list of its
     /// own).
     private func makeRemoteAccess() -> RemoteAccess {
         let store = makeIdentityStore()
@@ -183,7 +187,7 @@ final class AppModel {
         let choice = IdentityStorePlan.choose(bundled: Self.bundled, synthetic: synthetic,
                                               entitledAccessGroup: Self.entitledKeychainAccessGroup(), testRemoteDir: dir)
         if dir != nil, case .testDirectory = choice {} else if dir != nil {
-            print("SILL_TEST_REMOTE_DIR ignored: only a test host takes it (one that does not advertise and is not Sill.app itself).")
+            print("SILL_TEST_REMOTE_DIR ignored: only a test host takes it (one that does not advertise and is not HitPad.app itself).")
         }
         switch choice {
         case .dataProtection(let group):
@@ -214,7 +218,7 @@ final class AppModel {
         guard let task = SecTaskCreateFromSelf(nil),
               let value = SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) else { return nil }
         if let groups = value as? [String], !groups.isEmpty {
-            return groups.first { $0.hasSuffix(".me.saffer.sill.mac") } ?? groups.first
+            return groups.first { $0.hasSuffix(".com.github.donghaxkim.hitpad") } ?? groups.first
         }
         if let group = value as? String, !group.isEmpty { return group }
         return nil
@@ -224,13 +228,13 @@ final class AppModel {
     /// never saved (an existing install comes up on), and never from UserDefaults, where any process
     /// of this user could turn it off (docs/home-pairing-plan.md §6.5). The bare binary also takes
     /// `-requirePairing YES|NO` and saves it in its own store (memory, or the test directory);
-    /// Sill.app ignores the argument with a line.
+    /// HitPad.app ignores the argument with a line.
     private func launchRequirePairing(_ remote: RemoteAccess) -> Bool {
         let stored = remote.storedRequirePairing()
         let defaults = UserDefaults.standard
         guard defaults.object(forKey: "requirePairing") != nil else { return stored }
         if Self.bundled {
-            print("requirePairing ignored: Sill.app keeps Require pairing with its paired devices, never in its defaults or arguments; change it in Settings › Devices.")
+            print("requirePairing ignored: HitPad.app keeps Require pairing with its paired devices, never in its defaults or arguments; change it in Settings › Devices.")
             return stored
         }
         let wanted = defaults.bool(forKey: "requirePairing")
@@ -304,7 +308,7 @@ final class AppModel {
 
     /// An offer from the host: the window shows it. TEST ONLY: with the file store (--synthetic
     /// and SILL_TEST_REMOTE_DIR) the link and the code are also left in its directory, mode 0600,
-    /// for a test client to read. Never printed: the print shadow copies stdout into Sill.log.
+    /// for a test client to read. Never printed: the print shadow copies stdout into HitPad.log.
     private func pairingOffered(_ offer: RemoteAccess.PairingOffer) {
         if let dir = remote?.testDirectory {
             try? FileIdentityStore.writePrivate(Data(offer.url.utf8), to: dir.appendingPathComponent("pairing.url"))
@@ -377,7 +381,7 @@ final class AppModel {
 
     /// App Nap would coalesce this windowless app's timers once it is in the background, among
     /// them the 30 ms link keepalive ticks that keep a device's Wi-Fi out of power save, and the
-    /// 2026-09-22 stutter would be back. So while a device is connected Sill holds a
+    /// 2026-09-22 stutter would be back. So while a device is connected HitPad holds a
     /// latency-critical activity, which still lets the Mac sleep when idle: a device at home can
     /// wake it (Bonjour Sleep Proxy) or walk over. A device connected from away cannot, so while
     /// one is, the activity is `.userInitiated`, which also keeps the Mac from idle sleep (the
@@ -394,20 +398,20 @@ final class AppModel {
         switch want {
         case .remote:
             napActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiated, .latencyCritical],
-                                                                reason: "Sill is serving a device connected from away")
+                                                                reason: "HitPad is serving a device connected from away")
         case .connected:
             napActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
-                                                                reason: "Sill is serving a connected device")
+                                                                reason: "HitPad is serving a connected device")
         case .none:
             break
         }
     }
 
-    /// First launch, or any launch until the user closes Settings on it: when Accessibility is
+    /// First launch, or any launch until the user closes Settings on it: when pointer event posting is
     /// missing, Settings opens on the tablet setup. Screen Recording is not needed for Sidecar input.
     private func onboardIfNeeded() {
         permissions.refresh()
-        guard !synthetic, !permissions.accessibility, !settings.permissionsOnboardingDismissed else { return }
+        guard !synthetic, !permissions.pointerEventPosting, !settings.permissionsOnboardingDismissed else { return }
         showSettings?(.tablet)
     }
 }

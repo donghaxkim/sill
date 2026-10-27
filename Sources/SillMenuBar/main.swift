@@ -1,7 +1,7 @@
 import AppKit
 import SillHostCore
 
-// Sill.app's executable (Scripts/make-app.sh wraps it into the signed bundle). The AppKit
+// HitPad.app's executable (Scripts/make-app.sh wraps it into the signed bundle). The AppKit
 // lifecycle, like the CLI's --virtual-display branch: NSApplication.run() is what lets this
 // process see its virtual display's modes (VirtualDisplay.swift, "Event loop").
 
@@ -14,12 +14,12 @@ signal(SIGPIPE, SIG_IGN)
 HostLog.shared.configure(keepLines: 5_000, fileURL: DebugHooks.logFileURL)
 
 // The CLI's self-tests work here too, so the app's own identity (its TCC grants, its hardened
-// runtime) can be checked: `Sill.app/Contents/MacOS/Sill --virtual-display-selftest`.
+// runtime) can be checked: `HitPad.app/Contents/MacOS/HitPad --virtual-display-selftest`.
 if CommandLine.arguments.contains("--encoder-selftest") {
     EncoderSelfTest.run()
 }
 if let menuApp = MenuSelfTest.requested(in: CommandLine.arguments) {
-    MenuSelfTest.run(app: menuApp)   // `Sill --menu-selftest[=APP]`: read-only, as the CLI's
+    MenuSelfTest.run(app: menuApp)   // `HitPad --menu-selftest[=APP]`: read-only, as the CLI's
 }
 // CoreGraphics must be initialized on the main thread before ScreenCaptureKit touches it.
 _ = CGMainDisplayID()

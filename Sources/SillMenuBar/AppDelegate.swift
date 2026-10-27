@@ -1,7 +1,7 @@
 import AppKit
 import SillHostCore
 
-/// Sill.app: the Mac host as a menu bar app. The same StreamCoordinator as the CLI, under the
+/// HitPad.app: the Mac host as a menu bar app. The same StreamCoordinator as the CLI, under the
 /// AppKit loop the virtual display needs, with a status item for what it is doing, Settings for
 /// the knobs, and a Log window for what the CLI would have printed.
 ///
@@ -30,11 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DebugHooks.renderPreviewsIfAsked(model: model)      // exits when asked
         // A menu bar app with no windows open is exactly what automatic termination would end.
-        ProcessInfo.processInfo.disableAutomaticTermination("Sill serves devices from the menu bar")
+        ProcessInfo.processInfo.disableAutomaticTermination("HitPad serves devices from the menu bar")
         ProcessInfo.processInfo.disableSuddenTermination()
         let item = StatusItemController(model: model)        // "Starting…" until the host is up
         statusItem = item
         model.showSettings = { [weak self] tab in self?.showSettings(tab: tab) }
+        model.tablet.presentTabletSettingsForDisplayRecovery = { [weak self] in
+            self?.showSettings(tab: .tablet)
+        }
         model.settingsWindowForTests = { [weak self] in self?.settingsWindow }
         model.showLog = { [weak self] in self?.showLog() }
         // An offer can come from a device's request (its ask at the home door, or kind 21), and the
@@ -59,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DebugHooks.schedule(model: model)
     }
 
-    /// Opening Sill.app again (Finder, Spotlight, `open`) shows Settings: the way back when the
+    /// Opening HitPad.app again (Finder, Spotlight, `open`) shows Settings: the way back when the
     /// menu bar has no room for the status item.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings(tab: nil)

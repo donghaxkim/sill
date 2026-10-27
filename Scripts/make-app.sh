@@ -1,9 +1,9 @@
 #!/bin/bash
-# Builds Sill.app, the menu bar Mac host, from this SwiftPM package.
+# Builds HitPad.app, the menu bar Mac host, from this SwiftPM package.
 #
-#   Scripts/make-app.sh                    .build/Sill.app, signed with your Apple Development identity
+#   Scripts/make-app.sh                    .build/HitPad.app, signed with your Apple Development identity
 #   SILL_UNIVERSAL=1 Scripts/make-app.sh   …for Apple silicon and Intel Macs (arm64 and x86_64; #62)
-#   Scripts/make-app.sh --install          …then replace /Applications/Sill.app (a running copy quits first)
+#   Scripts/make-app.sh --install          …then replace /Applications/HitPad.app (a running copy quits first)
 #   Scripts/make-app.sh --install --open   …and launch it: Noah's one command after any change
 #   SILL_SIGN_IDENTITY='Developer ID Application: … (9B2KKVM937)' Scripts/make-app.sh --release
 #                                          (M6; refused unless HEAD carries the tag v‹version› and
@@ -40,7 +40,7 @@ if [ "$release" = 1 ] && [ -z "${SILL_SIGN_IDENTITY:-}" ]; then
     exit 2
 fi
 # A release is built only from the commit its tag names: the tag is "v" + Packaging/Info.plist's
-# CFBundleShortVersionString (v0.4.0 for 0.4.0), and every Sill.app's update check compares the
+# CFBundleShortVersionString (v0.4.0 for 0.4.0), and every HitPad.app's update check compares the
 # latest release's tag on GitHub with the version it runs (Sources/SillMenuBar/UpdatePolicy.swift).
 # A rehearsal (release.sh --dry-run, which sets SILL_RELEASE_DRY_RUN=1) builds any commit and only
 # warns: its zip is never notarized, so it is never published.
@@ -59,7 +59,7 @@ fi
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Packaging/Info.plist)"
 
-# SILL_UNIVERSAL=1: one Sill.app for Apple silicon and Intel Macs (#62), one build per architecture
+# SILL_UNIVERSAL=1: one HitPad.app for Apple silicon and Intel Macs (#62), one build per architecture
 # joined with lipo. Not one `swift build --arch arm64 --arch x86_64`: that needs Xcode's XCBuild, and
 # the Command Line Tools alone must still build this. Each architecture has its own scratch path: in
 # one shared .build, every switch of triple costs a relink (16 s measured), so no rebuild stays at
@@ -78,8 +78,8 @@ else
     swift build -c release --product SillMenuBar
     bin="$(swift build -c release --product SillMenuBar --show-bin-path)"
 fi
-app=.build/Sill.app
-stage=.build/Sill.app.partial      # assembled aside, so a failed run never leaves half a bundle
+app=.build/HitPad.app
+stage=.build/HitPad.app.partial      # assembled aside, so a failed run never leaves half a bundle
 rm -rf "$stage"
 mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources"
 # The executable, with the SDK it was compiled against recorded in it. SwiftPM links without
@@ -89,7 +89,7 @@ mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources"
 # minos from the binary, sdk from the SDK in use. The signature this breaks is replaced below.
 minos="$(xcrun vtool -show-build "$bin/SillMenuBar" | awk '$1 == "minos" && !found { print $2; found = 1 }')"
 xcrun vtool -set-build-version macos "${minos:?vtool reported no deployment target for $bin/SillMenuBar}" \
-    "$(xcrun --sdk macosx --show-sdk-version)" -output "$stage/Contents/MacOS/Sill" "$bin/SillMenuBar"
+    "$(xcrun --sdk macosx --show-sdk-version)" -output "$stage/Contents/MacOS/HitPad" "$bin/SillMenuBar"
 cp Packaging/Info.plist "$stage/Contents/Info.plist"
 build_number="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$stage/Contents/Info.plist"
@@ -113,21 +113,21 @@ if [ ! -f "$icon_out/compiled/Assets.car" ] || [ design/AppIcon.svg -nt "$icon_o
         doc="$icon_out/AppIcon.icon"
         mkdir -p "$doc/Assets"
         qlmanage -t -s 1024 -o "$icon_out" "$PWD/design/AppIcon.svg" >/dev/null 2>&1 || true
-        mv "$icon_out/AppIcon.svg.png" "$doc/Assets/Sill.png" 2>/dev/null || true
+        mv "$icon_out/AppIcon.svg.png" "$doc/Assets/HitPad.png" 2>/dev/null || true
         cat > "$doc/icon.json" <<'JSON'
 {
   "fill" : { "solid" : "srgb:0.00000,0.00000,0.00000,1.00000" },
-  "groups" : [ { "layers" : [ { "image-name" : "Sill.png", "name" : "Sill" } ] } ],
+  "groups" : [ { "layers" : [ { "image-name" : "HitPad.png", "name" : "HitPad" } ] } ],
   "supported-platforms" : { "squares" : [ "macOS" ] }
 }
 JSON
     fi
-    if [ -f "$doc/icon.json" ] && { [ "$doc" = "$PWD/Packaging/AppIcon.icon" ] || [ -f "$doc/Assets/Sill.png" ]; }; then
+    if [ -f "$doc/icon.json" ] && { [ "$doc" = "$PWD/Packaging/AppIcon.icon" ] || [ -f "$doc/Assets/HitPad.png" ]; }; then
         xcrun actool --compile "$icon_out/compiled" --platform macosx --minimum-deployment-target 14.0 \
             --app-icon AppIcon --output-partial-info-plist "$icon_out/partial.plist" "$doc" >/dev/null \
-            || echo "warning: actool could not compile the icon; Sill.app gets the generic icon" >&2
+            || echo "warning: actool could not compile the icon; HitPad.app gets the generic icon" >&2
     else
-        echo "warning: Quick Look did not render design/AppIcon.svg; Sill.app gets the generic icon" >&2
+        echo "warning: Quick Look did not render design/AppIcon.svg; HitPad.app gets the generic icon" >&2
     fi
 fi
 cp "$icon_out"/compiled/* "$stage/Contents/Resources/" 2>/dev/null || true
@@ -149,7 +149,7 @@ if [ "$release" = 1 ]; then
     #
     # The identity items' keychain (docs/keychain-plan.md): with a Developer ID provisioning profile
     # that authorises the access group, embed it and sign with Packaging/SillRelease.entitlements, so
-    # Sill.app keeps its key and trust list in the data-protection keychain, which no other process
+    # HitPad.app keeps its key and trust list in the data-protection keychain, which no other process
     # can pre-create or read. Without the profile, sign without those entitlements: they are
     # profile-restricted, so a build that carried them without a matching profile would pass codesign
     # yet be killed by AMFI at launch. The profile-free build is a valid, notarizable Developer ID
@@ -313,9 +313,9 @@ echo "Built $app, version $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVers
 echo "  identity keychain: ${keychain_note:-login keychain}"
 codesign -d -r- "$app" 2>&1 | sed -n 's/^# *designated => /  designated requirement: /p; s/^designated => /  designated requirement: /p'
 
-dest="${SILL_INSTALL_DIR:-/Applications}/Sill.app"
+dest="${SILL_INSTALL_DIR:-/Applications}/HitPad.app"
 if [ "$install" = 1 ]; then
-    # An iPad build of the iOS client installed on this Mac would also be a Sill.app: never replace
+    # An iPad build of the iOS client installed on this Mac would also be a HitPad.app: never replace
     # anything that is not this app.
     if [ -e "$dest" ]; then
         existing="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$dest/Contents/Info.plist" 2>/dev/null || true)"
@@ -324,16 +324,16 @@ if [ "$install" = 1 ]; then
             exit 1
         fi
     fi
-    # Quit a running Sill.app first. SIGTERM goes through HostShutdown, which puts a staged window
-    # back. The pattern matches Mac bundles only: the iOS Simulator's Sill.app is flat, and
-    # `pkill -x Sill` would kill it too.
-    if pgrep -f 'Sill\.app/Contents/MacOS/Sill' >/dev/null; then
-        pkill -TERM -f 'Sill\.app/Contents/MacOS/Sill' || true
-        for _ in $(seq 1 50); do pgrep -f 'Sill\.app/Contents/MacOS/Sill' >/dev/null || break; sleep 0.1; done
+    # Quit a running HitPad.app first. SIGTERM goes through HostShutdown, which puts a staged window
+    # back. The pattern matches Mac bundles only: the iOS Simulator's HitPad.app is flat, and
+    # `pkill -x HitPad` would kill it too.
+    if pgrep -f 'HitPad\.app/Contents/MacOS/HitPad' >/dev/null; then
+        pkill -TERM -f 'HitPad\.app/Contents/MacOS/HitPad' || true
+        for _ in $(seq 1 50); do pgrep -f 'HitPad\.app/Contents/MacOS/HitPad' >/dev/null || break; sleep 0.1; done
     fi
     rm -rf "$dest"
     ditto "$app" "$dest"
-    # One registered Sill: LaunchServices (the login item, `open -b`, Spotlight) must not pick the
+    # One registered HitPad: LaunchServices (the login item, `open -b`, Spotlight) must not pick the
     # copy in .build.
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$PWD/$app" 2>/dev/null || true
     echo "Installed $dest"

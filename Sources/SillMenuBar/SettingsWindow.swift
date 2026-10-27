@@ -36,7 +36,7 @@ enum SettingsTab: String, CaseIterable {
 
 /// Settings, owned by AppKit: toolbar tabs over grouped SwiftUI Forms, so it looks like a SwiftUI
 /// Settings scene but opens from anywhere (the menu, ⌘,, reopening the app, onboarding) and is
-/// kept off Sill's own virtual display. The window is made once and hidden on close.
+/// kept off HitPad's own virtual display. The window is made once and hidden on close.
 ///
 /// Never taller than its screen (issue #59, docs/settings-window-plan.md). AppKit makes the selected
 /// pane's view as tall as its whole Form, the hosting controller's preferredContentSize, at priority
@@ -44,13 +44,13 @@ enum SettingsTab: String, CaseIterable {
 /// in the layout pass; the window is not resizable, so nothing shortens it to the screen. `heightCap`
 /// keeps the content at most `SettingsWindowFit.contentLimit` for the window's screen, at 750, and
 /// the Form scrolls. Its constant follows the screen (`refit`); the window is moved back onto the
-/// screen when Sill's own changes leave it partly outside (`place`).
+/// screen when HitPad's own changes leave it partly outside (`place`).
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let model: AppModel
     private let tabs: SettingsTabController
     private let heightCap: NSLayoutConstraint
-    /// The cap's constant until a screen is known (none at all, or only Sill's virtual display, as a
+    /// The cap's constant until a screen is known (none at all, or only HitPad's virtual display, as a
     /// Mac with no display of its own could have): taller than any display, so no cap, as before.
     private static let noCap: CGFloat = 10_000
     /// A move that waits for the mouse buttons to be released (`placeOnRelease`).
@@ -66,7 +66,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.collectionBehavior.insert(.moveToActiveSpace)
         heightCap = tabs.view.heightAnchor.constraint(lessThanOrEqualToConstant: Self.noCap)
         heightCap.priority = .defaultHigh
-        heightCap.identifier = "Sill.settingsScreenCap"
+        heightCap.identifier = "HitPad.settingsScreenCap"
         super.init(window: window)
         window.delegate = self
         // Centred the first time; after that where the user left it.
@@ -93,7 +93,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         refit()
         WindowPlacement.bringForward(window)
         // At the selected pane's height, and on the screen bringForward chose (it moves a window that
-        // sat on Sill's virtual display), before it is placed there.
+        // sat on HitPad's virtual display), before it is placed there.
         window.layoutIfNeeded()
         refit()
         model.visibleSettingsTab = tabs.current
@@ -101,9 +101,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Closed by the user before Accessibility is allowed: do not reopen setup automatically.
+        // Closed by the user before pointer control is allowed: do not reopen setup automatically.
         model.permissions.refresh()
-        if !model.permissions.accessibility { model.settings.permissionsOnboardingDismissed = true }
+        if !model.permissions.pointerEventPosting { model.settings.permissionsOnboardingDismissed = true }
         return true
     }
 
@@ -141,7 +141,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     /// next layout; `show` places it after that), and never while a mouse button is down: a window
     /// the user is dragging (across screens, its cap changing on the way) stays under the pointer and
     /// is placed once every button is up. A window the user leaves partly off the screen stays there
-    /// until Sill next changes its size or shows it.
+    /// until HitPad next changes its size or shows it.
     private func place() {
         guard let window, window.isVisible, let visible = fitVisibleFrame() else { return }
         guard NSEvent.pressedMouseButtons == 0 else { placeOnRelease(); return }
@@ -165,7 +165,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         releaseWatch = timer
     }
 
-    /// The visible frame the window must fit in: its screen's or, when it is on none or on Sill's
+    /// The visible frame the window must fit in: its screen's or, when it is on none or on HitPad's
     /// virtual display, the first other screen's, where bringForward puts it; TEST ONLY, the top
     /// part of it (-SillTestScreenHeight).
     private func fitVisibleFrame() -> CGRect? {
@@ -292,11 +292,11 @@ final class SettingsTabController: NSTabViewController {
     }
 }
 
-/// Where Sill's windows appear, and how they come forward.
+/// Where HitPad's windows appear, and how they come forward.
 @MainActor
 enum WindowPlacement {
-    /// Centres `window` on the main display when it has no screen or sits on the Sill virtual
-    /// display (a streamed window lives there, off the user's screens), then activates Sill and
+    /// Centres `window` on the main display when it has no screen or sits on the HitPad virtual
+    /// display (a streamed window lives there, off the user's screens), then activates HitPad and
     /// makes the window key. An accessory app's activation can be refused when no click led to
     /// it; the window is then ordered front anyway on the next turn, visible if not key.
     static func bringForward(_ window: NSWindow) {
@@ -315,7 +315,7 @@ enum WindowPlacement {
 
     /// A window a device put up (a pairing window it asked for, the cable notice): in front of every
     /// app's windows (over a full-screen app too, with `.fullScreenAuxiliary` in its collection
-    /// behavior), off the virtual display, without activating Sill or taking the keyboard, so a
+    /// behavior), off the virtual display, without activating HitPad or taking the keyboard, so a
     /// device's request can never swallow what is being typed in another app. A click makes it key.
     /// (docs/home-pairing-plan.md §6.3)
     static func showInFront(_ window: NSWindow) {

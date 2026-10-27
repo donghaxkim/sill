@@ -51,7 +51,7 @@ struct StatusPresentation: Equatable {
     var away = false
 }
 
-/// Whether Sill holds its two permissions, as last read.
+/// Whether HitPad holds its two permissions, as last read.
 struct PermissionState: Equatable {
     var screenRecording: Bool
     var accessibility: Bool
@@ -59,7 +59,7 @@ struct PermissionState: Equatable {
 
 /// The status copy. Title case in menus, sentence case in explanations, typographic quotes.
 enum StatusText {
-    /// How long the menu says an iPhone or iPad needs Sill updated after the home door refused one
+    /// How long the menu says an iPhone or iPad needs HitPad updated after the home door refused one
     /// of its plain connections (docs/home-pairing-plan.md §6.4).
     static let olderDeviceShownFor: TimeInterval = 600
 
@@ -96,16 +96,16 @@ enum StatusText {
         let request = pairingRequest(s.remote, now: now)
         if let request { attention.append(request) }
         if let at = s.remote?.olderDeviceAt, now.timeIntervalSince(at) < olderDeviceShownFor {
-            attention.append(.init(title: "An iPhone or iPad Needs Sill Updated", subtitle: "It tried to connect with an older Sill.",
+            attention.append(.init(title: "An iPhone or iPad Needs HitPad Updated", subtitle: "It tried to connect with an older HitPad.",
                                    action: .none))
         }
         let homeDoorClosed = homeDoorUnavailable(s.remote)
         if homeDoorClosed {
-            attention.append(.init(title: "Devices Can’t Connect", subtitle: "Sill couldn’t use its key in your keychain.",
+            attention.append(.init(title: "Devices Can’t Connect", subtitle: "HitPad couldn’t use its key in your keychain.",
                                    action: .showDevices))
         }
 
-        // The attention glyph means "Sill needs you". The test pattern needs no permission. A device
+        // The attention glyph means "HitPad needs you". The test pattern needs no permission. A device
         // waiting to pair and a closed home door need the user too; an older device is only news.
         let glyph: StatusGlyph.State
         if startupError != nil || isFailed(s.network) || remotePortTaken != nil || request != nil || homeDoorClosed
@@ -125,7 +125,7 @@ enum StatusText {
         return StatusPresentation(glyph: glyph, header: header, subtitle: subtitle,
                                   source: sourceRow(s), devices: s.devices.map(deviceRow), attention: attention,
                                   virtualDisplayNote: virtualDisplayNote(s),
-                                  tooltip: "Sill — \(header)", accessibilityLabel: "Sill, \(header)",
+                                  tooltip: "HitPad — \(header)", accessibilityLabel: "HitPad, \(header)",
                                   advertisedName: name, remoteAccessNote: remoteAccessNote(s.remote),
                                   canPair: s.remote.map { $0.identityProblem == nil } ?? false, away: s.away)
     }
@@ -182,21 +182,21 @@ enum StatusText {
     /// The header and its explanation; the first match wins.
     private static func headline(_ s: HostStatusSnapshot, _ permissions: PermissionState, _ startupError: String?,
                                  _ hasCoordinator: Bool) -> (String, String?) {
-        if let startupError { return ("Sill Couldn’t Start", startupError) }
+        if let startupError { return ("HitPad Couldn’t Start", startupError) }
         if !hasCoordinator { return ("Starting…", nil) }
         // No listener at all (fail closed): no device can find or reach this Mac.
         if homeDoorUnavailable(s.remote) {
             return ("Not Visible on the Network",
-                    "Sill couldn’t use its key in your keychain. Quit Sill and open it again, and choose Always Allow if the keychain asks.")
+                    "HitPad couldn’t use its key in your keychain. Quit HitPad and open it again, and choose Always Allow if the keychain asks.")
         }
         switch s.network {
         case .starting:
             return ("Starting…", nil)
         case .failed(let error):
-            return ("Not Visible on the Network", "\(error). Quit and reopen Sill to try again.")
+            return ("Not Visible on the Network", "\(error). Quit and reopen HitPad to try again.")
         case .waiting:
             return ("Waiting for the Network",
-                    "Sill appears on your iPhone and iPad once this Mac is on Wi-Fi or Ethernet and Local Network access is allowed.")
+                    "HitPad appears on your iPhone and iPad once this Mac is on Wi-Fi or Ethernet and Local Network access is allowed.")
         case .notAdvertised(let port):
             return ("Test Pattern Mode", "Not advertised; test clients connect to port \(port).")
         case .registering, .advertising:
@@ -213,7 +213,7 @@ enum StatusText {
             return ("\(connected) Connected", "Pick a window on the device to start streaming.")
         }
         if case .advertising(let name) = s.network {
-            return ("Waiting for a Device", "Open Sill on your iPhone or iPad. This Mac appears as “\(name)”.")
+            return ("Waiting for a Device", "Open HitPad on your iPhone or iPad. This Mac appears as “\(name)”.")
         }
         return ("Waiting for a Device", "Registering on the local network…")
     }

@@ -3,7 +3,7 @@ import AppKit
 /// The status item's image: design/AppIcon.svg reduced to a menu bar template. The iMac is an
 /// outline with its stand, the iPad sits tilted in its screen as in the icon, and the state shows
 /// on the iPad: empty (idle), a dot (a device is connected), a window (streaming), or a badge at
-/// the lower right (Sill needs attention).
+/// the lower right (HitPad needs attention).
 ///
 /// Drawn in code from the SVG's own coordinates, so there is no asset to keep in sync, and marked
 /// as a template so the menu bar tints it for light and dark bars and highlights it when the menu
@@ -16,7 +16,7 @@ enum StatusGlyph {
     static let size = NSSize(width: 21, height: 18)
 
     static let symbolFallback: NSImage? = {
-        let image = NSImage(systemSymbolName: "macbook.and.ipad", accessibilityDescription: "Sill")
+        let image = NSImage(systemSymbolName: "macbook.and.ipad", accessibilityDescription: "HitPad")
         image?.isTemplate = true
         return image
     }()
@@ -28,7 +28,7 @@ enum StatusGlyph {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Sill"
+        image.accessibilityDescription = "HitPad"
         return image
     }
 
