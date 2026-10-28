@@ -804,6 +804,7 @@ final class SidecarPointerRouter {
     private let readLocation: () -> CGPoint
     private let canPost: () -> Bool
     private let send: (CGEvent) -> Void
+    private var deltaAccumulator = MouseDeltaAccumulator()
 
     init(displayBounds: @escaping (CGDirectDisplayID) -> CGRect = { CGDisplayBounds($0) },
          readLocation: @escaping () -> CGPoint = { CGEvent(source: nil)?.location ?? .zero },
@@ -850,8 +851,13 @@ final class SidecarPointerRouter {
         // Cursor warping alone can make motion look successful while the event server rejects
         // clicks. Check the actual event-posting grant before either action, including mid-session.
         guard canPost() else { return false }
+        let previousLocation = lastLocation ?? readLocation()
+        let delta = deltaAccumulator.take(CGPoint(x: point.x - previousLocation.x,
+                                                  y: point.y - previousLocation.y))
         guard let event = CGEvent(mouseEventSource: source, mouseType: type,
                                   mouseCursorPosition: point, mouseButton: button) else { return false }
+        event.setIntegerValueField(.mouseEventDeltaX, value: delta.x)
+        event.setIntegerValueField(.mouseEventDeltaY, value: delta.y)
         lastLocation = point
         send(event)
         return true

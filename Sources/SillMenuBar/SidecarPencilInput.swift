@@ -11,6 +11,7 @@ final class SidecarPencilMapper {
     private var lastSourcePoint: CGPoint?
     private var lastLocation: CGPoint?
     private var pressedButton: CGMouseButton?
+    private var deltaAccumulator = MouseDeltaAccumulator()
 
     func transform(_ event: CGEvent, sourceBounds: CGRect, geometry: TabletSurfaceGeometry,
                    targetBounds: CGRect, mode: TabletMappingMode, clicks: Bool,
@@ -20,9 +21,10 @@ final class SidecarPencilMapper {
         let isProximity = event.type == .tabletProximity || subtype == 2
         let isTablet = event.type == .tabletPointer || subtype == 1 || isProximity
         guard isTablet else { return event }
+        let sourcePoint = tabletSourcePoint(for: event, subtype: subtype)
         let incomingDevice = event.getIntegerValueField(isProximity ? .tabletProximityEventDeviceID : .tabletEventDeviceID)
         let isCapturedDevice = deviceID != nil && incomingDevice == deviceID
-        guard sourceBounds.contains(event.location) || isCapturedDevice else { return event }
+        guard sourceBounds.contains(sourcePoint) || isCapturedDevice else { return event }
 
         // Proximity and standalone tablet samples accompany the mouse events. Forwarding any
         // of them would reintroduce the iPad cursor position or switch the target to tablet input.
@@ -35,8 +37,8 @@ final class SidecarPencilMapper {
         guard event.type != .tabletPointer else { return nil }
         if incomingDevice != 0 { deviceID = incomingDevice }
 
-        let local = CGPoint(x: geometry.bounds.minX + event.location.x - sourceBounds.minX,
-                            y: geometry.bounds.maxY - (event.location.y - sourceBounds.minY))
+        let local = CGPoint(x: geometry.bounds.minX + sourcePoint.x - sourceBounds.minX,
+                            y: geometry.bounds.maxY - (sourcePoint.y - sourceBounds.minY))
         let normalized = geometry.normalized(local)
         let isDown = event.type == .leftMouseDown || event.type == .rightMouseDown
         let isUp = event.type == .leftMouseUp || event.type == .rightMouseUp
@@ -51,7 +53,8 @@ final class SidecarPencilMapper {
             lastSourcePoint = nil
             guard pressedButton == button, let lastLocation else { return nil }
             pressedButton = nil
-            return mouseEvent(isRight ? .rightMouseUp : .leftMouseUp, at: lastLocation, original: event)
+            return mouseEvent(isRight ? .rightMouseUp : .leftMouseUp, at: lastLocation,
+                              original: event)
         }
         guard let normalized, targetBounds.width > 0, targetBounds.height > 0 else {
             lastSourcePoint = nil
@@ -73,7 +76,10 @@ final class SidecarPencilMapper {
             } else { point = origin }
             lastSourcePoint = local
         }
+        let previousLocation = lastLocation ?? currentLocation()
         lastLocation = point
+        let delta = deltaAccumulator.take(CGPoint(x: point.x - previousLocation.x,
+                                                  y: point.y - previousLocation.y))
         let type: CGEventType
         if isDown && clicks {
             // A Pencil contact owns one button. Ignore a conflicting press until it is released.
@@ -83,7 +89,7 @@ final class SidecarPencilMapper {
         } else {
             type = pressedButton == .left ? .leftMouseDragged : pressedButton == .right ? .rightMouseDragged : .mouseMoved
         }
-        return mouseEvent(type, at: point, original: event)
+        return mouseEvent(type, at: point, delta: delta, original: event)
     }
 
     /// Disconnects and setting changes must release buttons even if no Pencil-up arrives.
@@ -97,22 +103,59 @@ final class SidecarPencilMapper {
         lastSourcePoint = nil
         lastLocation = nil
         pressedButton = nil
+        deltaAccumulator.reset()
         return events
     }
 
-    private func mouseEvent(_ type: CGEventType, at point: CGPoint, original: CGEvent? = nil) -> CGEvent? {
+    /// WindowServer clamps the mouse location to the focused game window while a game captures
+    /// the pointer. The raw tablet fields keep the actual Pencil position, so prefer them for
+    /// tablet-point events and fall back to the mouse location when a driver omits them.
+    private func tabletSourcePoint(for event: CGEvent, subtype: Int64) -> CGPoint {
+        guard subtype == 1 || event.type == .tabletPointer else { return event.location }
+        let x = event.getDoubleValueField(.tabletEventPointX)
+        let y = event.getDoubleValueField(.tabletEventPointY)
+        guard x != 0 || y != 0 else { return event.location }
+        return CGPoint(x: x, y: y)
+    }
+
+    private func mouseEvent(_ type: CGEventType, at point: CGPoint,
+                            delta: (x: Int64, y: Int64) = (0, 0), original: CGEvent? = nil) -> CGEvent? {
         let right = type == .rightMouseDown || type == .rightMouseDragged || type == .rightMouseUp
         guard let result = CGEvent(mouseEventSource: eventSource, mouseType: type,
                                    mouseCursorPosition: point, mouseButton: right ? .right : .left) else { return nil }
         result.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
+        result.setIntegerValueField(.mouseEventDeltaX, value: delta.x)
+        result.setIntegerValueField(.mouseEventDeltaY, value: delta.y)
         if let original {
             result.flags = original.flags
-            result.timestamp = original.timestamp
             if type != .mouseMoved {
                 result.setIntegerValueField(.mouseEventClickState, value: original.getIntegerValueField(.mouseEventClickState))
             }
         }
         return result
+    }
+}
+
+/// SDL, and therefore osu!'s High Precision Mouse, reads relative motion from the event's
+/// integer deltas instead of its cursor position. Keep fractional movement across samples so
+/// slow tablet strokes are not rounded away.
+struct MouseDeltaAccumulator {
+    private var remainderX: CGFloat = 0
+    private var remainderY: CGFloat = 0
+
+    mutating func take(_ movement: CGPoint) -> (x: Int64, y: Int64) {
+        let x = remainderX + movement.x
+        let y = remainderY + movement.y
+        let deltaX = Int64(x.rounded())
+        let deltaY = Int64(y.rounded())
+        remainderX = x - CGFloat(deltaX)
+        remainderY = y - CGFloat(deltaY)
+        return (deltaX, deltaY)
+    }
+
+    mutating func reset() {
+        remainderX = 0
+        remainderY = 0
     }
 }
 

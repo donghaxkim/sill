@@ -61,6 +61,15 @@ MainActor.assumeIsolated {
     router.click(down: false)
     check(events.map(\.type) == [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp],
           "touch router emits a complete drag sequence")
+    check(events[1].getIntegerValueField(.mouseEventDeltaX) == 0
+          && events[1].getIntegerValueField(.mouseEventDeltaY) == 0,
+          "touch-down carries no movement delta")
+    check(events[2].getIntegerValueField(.mouseEventDeltaX) > 0
+          && events[2].getIntegerValueField(.mouseEventDeltaY) > 0,
+          "touch drag carries relative movement for relative-mouse clients")
+    check(events[3].getIntegerValueField(.mouseEventDeltaX) == 0
+          && events[3].getIntegerValueField(.mouseEventDeltaY) == 0,
+          "touch-up carries no movement delta")
     check(near(events.last?.location, CGPoint(x: target.maxX - 1, y: target.maxY - 1)), "touch release uses final location")
     permitted = false
     let count = events.count
@@ -100,6 +109,55 @@ MainActor.assumeIsolated {
         check(result?.type == .mouseMoved && result.map { target.contains($0.location) } == true,
               "continuous stroke sample \(step) has exactly one target-display event")
     }
+
+    let clampMapper = SidecarPencilMapper()
+    @MainActor func clamped(_ point: CGPoint) -> CGEvent {
+        let event = pencil(.leftMouseDragged, at: CGPoint(x: target.minX, y: target.minY + 33), subtype: 1)
+        event.setIntegerValueField(.tabletEventPointX, value: Int64(point.x))
+        event.setIntegerValueField(.tabletEventPointY, value: Int64(point.y))
+        return event
+    }
+    @MainActor func mapClamped(_ point: CGPoint) -> CGEvent? {
+        clampMapper.transform(clamped(point), sourceBounds: source, geometry: geometry,
+                              targetBounds: target, mode: .absolute, clicks: false,
+                              currentLocation: { CGPoint(x: target.midX, y: target.midY) })
+    }
+    let clampedFirst = mapClamped(CGPoint(x: -415, y: 243))
+    let clampedSecond = mapClamped(CGPoint(x: -400, y: 230))
+    check(clampedFirst != nil && clampedSecond != nil,
+          "window-clamped Pencil still produces mouse events")
+    check(clampedFirst?.location != clampedSecond?.location,
+          "raw tablet coordinates drive movement when the mouse location is clamped")
+    let clampedLocal = CGPoint(x: surfaceBounds.minX + (-415 - source.minX),
+                               y: surfaceBounds.maxY - (243 - source.minY))
+    check(near(clampedFirst?.location,
+               TabletSurfaceGeometry.destination(geometry.normalized(clampedLocal)!, in: target)),
+          "clamped Pencil maps from its raw tablet point")
+
+    let fallbackMapper = SidecarPencilMapper()
+    let fallback = pencil(.leftMouseDragged, at: raw)
+    check(fallbackMapper.transform(fallback, sourceBounds: source, geometry: geometry,
+                                   targetBounds: target, mode: .absolute, clicks: false,
+                                   currentLocation: { CGPoint(x: target.midX, y: target.midY) }) != nil,
+          "tablet events without raw point fields fall back to their mouse location")
+
+    let motionMapper = SidecarPencilMapper()
+    @MainActor func mapMotion(_ point: CGPoint) -> CGEvent? {
+        motionMapper.transform(pencil(.leftMouseDragged, at: point), sourceBounds: source,
+                               geometry: geometry, targetBounds: target, mode: .absolute,
+                               clicks: false, currentLocation: { CGPoint(x: target.midX, y: target.midY) })
+    }
+    let motionStart = CGPoint(x: raw.x + 100, y: raw.y + 40)
+    let motionFirst = mapMotion(motionStart)
+    let motionSecond = mapMotion(CGPoint(x: motionStart.x + 20, y: motionStart.y))
+    let motionThird = mapMotion(CGPoint(x: motionStart.x + 40, y: motionStart.y))
+    let motionDeltaX = (motionSecond?.getIntegerValueField(.mouseEventDeltaX) ?? 0)
+        + (motionThird?.getIntegerValueField(.mouseEventDeltaX) ?? 0)
+    let expectedDeltaX = Int64(((motionThird?.location.x ?? 0) - (motionFirst?.location.x ?? 0)).rounded())
+    check(motionDeltaX != 0 && abs(motionDeltaX - expectedDeltaX) <= 1,
+          "relative-mouse deltas preserve the full mapped movement")
+    check(motionThird?.getIntegerValueField(.mouseEventDeltaY) == 0,
+          "a horizontal stroke carries no vertical movement delta")
     check(map(pencil(.leftMouseUp, at: raw)) == nil, "lift with clicks off never sends the source position")
     let secondContact = map(pencil(.leftMouseDown, at: CGPoint(x: -500, y: 200)))
     check(secondContact?.location != mappedDown?.location, "new contact jumps to its new absolute position")
@@ -120,6 +178,9 @@ MainActor.assumeIsolated {
     let up = map(pencil(.leftMouseUp, at: CGPoint(x: -1100, y: 700)), clicks: true)
     check([click?.type, drag?.type, up?.type] == [.leftMouseDown, .leftMouseDragged, .leftMouseUp],
           "contact-click sends one down/drag/up sequence")
+    check(up?.getIntegerValueField(.mouseEventDeltaX) == 0
+          && up?.getIntegerValueField(.mouseEventDeltaY) == 0,
+          "lift carries no movement delta")
     check(near(up?.location, drag!.location), "lifting outside the area releases on the target display")
     _ = map(pencil(.leftMouseDown, at: raw), clicks: true)
     let releases = mapper.endInput()
@@ -131,5 +192,15 @@ MainActor.assumeIsolated {
     check(relativeMove!.location.x > relativeStart!.location.x && relativeMove!.location.y > relativeStart!.location.y,
           "relative Pencil motion preserves both axes")
 }
+var accumulator = MouseDeltaAccumulator()
+var accumulatedX: Int64 = 0
+var accumulatedY: Int64 = 0
+for _ in 0..<10 {
+    let delta = accumulator.take(CGPoint(x: 0.3, y: -0.2))
+    accumulatedX += delta.x
+    accumulatedY += delta.y
+}
+check(accumulatedX == 3 && accumulatedY == -2,
+      "fractional movement is carried across samples instead of rounded away")
 print("\(checks) checks, \(failures) failures")
 exit(failures == 0 ? 0 : 1)
