@@ -1,0 +1,25 @@
+Sources/SillMenuBar/SidecarPencilInput.swift
+  s_4668ba23be90d9::t_ea2f04cb7c0586 14,24,27,40-41,56-57,79,81-82,92,106,110-122,127-128,139-161
+Sources/SillMenuBar/SidecarTablet.swift
+  s_4668ba23be90d9::t_d3ca9b67e36ad9 807,854-856,859-860
+Tests/checks/README.md
+  s_4668ba23be90d9::t_7c6ade194ebe40 85
+Tests/checks/sidecar-tablet/main.swift
+  s_4668ba23be90d9::t_ee75e83f5ca3b5 64-72,112-160,181-183,195-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21e541f745831b07e04188b951aeb93498844bda",
+  "prompts": {},
+  "sessions": {
+    "s_4668ba23be90d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17f11-f9e4-7310-be7b-87fe3988a827",
+        "model": "deepseek-flash"
+      },
+      "human_author": "donghaxkim <donghaxkim@gmail.com>"
+    }
+  }
+}
